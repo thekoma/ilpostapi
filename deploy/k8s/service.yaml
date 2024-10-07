@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: ilpostapi
+    group: ilpostapi
+  name: ilpostapi
+spec:
+  ports:
+    - name: web
+      port: 5000
+      targetPort: 5000
+  selector:
+    app: ilpostapi
+    group: ilpostapi

@@ -1,0 +1,5 @@
+.env
+deploy/k8s/secret.yaml
+.venv/**
+.venv/
+__pycache__

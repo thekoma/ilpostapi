@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: ilpostapi
+    group: ilpostapi
+  name: ilpostapi
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ilpostapi
+      group: ilpostapi
+  strategy: {}
+  template:
+    metadata:
+      labels:
+        app: ilpostapi
+        group: ilpostapi
+    spec:
+      containers:
+        - envFrom:
+          - secretRef:
+              name: ilpostapi
+          resources:
+            limits:
+              cpu: 100m
+              memory: 100Mi
+            requests:
+              cpu: 100m
+              memory: 100Mi
+          image: ilpostapi:latest
+          command: ["uvicorn", "main:app", "--reload" ,"--proxy-headers", "--port", "5000", "--host", "0.0.0.0", "--forwarded-allow-ips", "*"]
+          livenessProbe:
+            exec:
+              command:
+                - curl
+                - -f
+                - http://127.0.0.1:5000/healthcheck
+            failureThreshold: 12
+            periodSeconds: 5
+            timeoutSeconds: 5
+          name: ilpostapi
+          ports:
+            - containerPort: 5000
+      restartPolicy: Always

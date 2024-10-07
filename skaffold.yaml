@@ -1,0 +1,24 @@
+apiVersion: skaffold/v4beta6
+kind: Config
+metadata:
+  name: ilpostapi
+build:
+  artifacts:
+    - image: ilpostapi
+      sync:
+        infer:
+          - src/*
+  local:
+    useBuildkit: true
+manifests:
+  rawYaml:
+    - deploy/k8s/deployment.yaml
+    - deploy/k8s/secret.yaml
+    - deploy/k8s/service.yaml
+portForward:
+  - resourceType: deployment
+    resourceName: ilpostapi
+    port: 5000
+    address: 0.0.0.0
+deploy:
+  kubectl: {}
