@@ -23,10 +23,15 @@ jobs:
         with:
           script: |
             // Get the latest tag
-            const latestTag = await github.rest.repos.getLatestRelease({
+            const tags = await github.rest.repos.listTags({
               owner: context.repo.owner,
               repo: context.repo.repo,
-            }).then(res => res.data.tag_name || 'v0.0.0'); // Default to 'v0.0.0' if no releases
+            }).then(res => res.data);
+
+            let latestTag = 'v0.0.0'; // Default if no tags exist
+            if (tags.length > 0) {
+              latestTag = tags[0].name; // Assuming tags are sorted by date (newest first)
+            }
 
             // Extract version components
             const [, year, month, minor] = latestTag.match(/v(\d{4})\.(\d{2})\.(\d+)/) || [null, 0, 0, 0];
