@@ -1,0 +1,60 @@
+name: Create Tag and Increment Version
+
+on:
+  push:
+    branches:
+      - main # Trigger on pushes to the main branch
+  workflow_dispatch:  # Allow manual triggering
+
+jobs:
+  create-tag:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Get latest tag and increment version
+        id: tag_version
+        uses: actions/github-script@v6
+        with:
+          script: |
+            // Get the latest tag
+            const latestTag = await github.rest.repos.getLatestRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+            }).then(res => res.data.tag_name || 'v0.0.0'); // Default to 'v0.0.0' if no releases
+
+            // Extract version components
+            const [, year, month, minor] = latestTag.match(/v(\d{4})\.(\d{2})\.(\d+)/) || [null, 0, 0, 0];
+
+            // Get current year and month
+            const now = new Date();
+            const currentYear = now.getFullYear();
+            const currentMonth = now.getMonth() + 1; // Months are 0-indexed
+
+            // Determine the new version
+            let newMinor = parseInt(minor) + 1;
+            if (currentYear > parseInt(year) || currentMonth > parseInt(month)) {
+              newMinor = 0;
+            }
+
+            const newVersion = `v${currentYear}.${currentMonth.toString().padStart(2, '0')}.${newMinor}`;
+
+            // Output the new version
+            core.setOutput('new_version', newVersion);
+
+      - name: Create Tag
+        uses: actions/github-script@v6
+        with:
+          script: |
+            // Create the new tag
+            await github.rest.git.createRef({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: `refs/tags/${steps.tag_version.outputs.new_version}`,
+              sha: context.sha,
+            });
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
