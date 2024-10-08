@@ -51,11 +51,14 @@ jobs:
         uses: actions/github-script@v6
         with:
           script: |
+            // Access the output directly using the step id and output name
+            const newVersion = '${{ steps.tag_version.outputs.new_version }}';
+
             // Create the new tag
             await github.rest.git.createRef({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              ref: `refs/tags/${steps.tag_version.outputs.new_version}`,
+              ref: `refs/tags/${newVersion}`,
               sha: context.sha,
             });
         env:
