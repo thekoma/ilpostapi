@@ -68,3 +68,9 @@ jobs:
             });
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Trigger Tag Workflow
+        uses: peter-evans/repository-dispatch@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          event-type: tag_created  # Choose a descriptive event type
+          client-payload: '{"tag_name": "${{ steps.tag_version.outputs.new_version }}"}'
