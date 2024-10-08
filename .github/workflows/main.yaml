@@ -34,7 +34,7 @@ jobs:
     needs: build-and-push # Run after the build job
     runs-on: ubuntu-latest
     permissions:
-      releases: write # Required to create releases
+      releases: write-all # Required to create releases
 
     steps:
       - name: Download built artifact
