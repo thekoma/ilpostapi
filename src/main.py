@@ -102,7 +102,7 @@ async def fetch_episodes(podcast_id: int, page: int = 1, hits: int = 1):
 # --- API Endpoints ---
 
 
-@app.get("/podcasts")
+@app.get("/podcasts", description="Returns a list of podcasts.")
 async def get_podcasts(page: int = 1, hits: int = 50):
     """Returns a list of podcasts."""
     try:
@@ -112,7 +112,10 @@ async def get_podcasts(page: int = 1, hits: int = 50):
         return JSONResponse(content={"detail": e.detail}, status_code=e.status_code)
 
 
-@app.get("/podcasts/search")
+@app.get(
+    "/podcasts/search",
+    description="Searches for podcasts by title using fuzzy matching.",
+)
 async def search_podcasts(query: str, request: Request):
     """Searches for podcasts by title using fuzzy matching."""
     podcasts = await fetch_podcasts()
@@ -144,7 +147,10 @@ async def search_podcasts(query: str, request: Request):
     )
 
 
-@app.get("/podcast/{podcast_id}")
+@app.get(
+    "/podcast/{podcast_id}",
+    description="Returns details of a specific podcast by its ID.",
+)
 async def get_podcast_by_id(
     podcast_id: int = Path(..., description="The ID of the podcast"),
     page: int = 1,
@@ -158,8 +164,14 @@ async def get_podcast_by_id(
         return JSONResponse(content={"detail": e.detail}, status_code=e.status_code)
 
 
-@app.get("/podcast/{podcast_id}/last")
-@app.get("/podcast/{podcast_id}/lastepisode")
+@app.get(
+    "/podcast/{podcast_id}/last",
+    description="Returns the last episode of a specific podcast by its ID.",
+)
+@app.get(
+    "/podcast/{podcast_id}/lastepisode",
+    description="Returns the last episode of a specific podcast by its ID.",
+)
 async def get_podcast_by_id(
     podcast_id: int = Path(..., description="The ID of the podcast"),
 ):
@@ -173,7 +185,7 @@ async def get_podcast_by_id(
         return JSONResponse(content={"detail": e.detail}, status_code=e.status_code)
 
 
-@app.get("/healthcheck")
+@app.get("/healthcheck", description="Simple health check endpoint.")
 async def healthcheck():
     """Simple health check endpoint."""
     return {"status": "ok"}
