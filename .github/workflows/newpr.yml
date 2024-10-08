@@ -19,7 +19,7 @@ jobs:
 
       - name: Get latest tag and increment version
         id: tag_version
-        uses: actions/github-script@v6
+        uses: actions/github-script@v7
         with:
           script: |
             // Get the latest tag
@@ -53,7 +53,7 @@ jobs:
             core.setOutput('new_version', newVersion);
 
       - name: Create Tag
-        uses: actions/github-script@v6
+        uses: actions/github-script@v7
         with:
           script: |
             // Access the output directly using the step id and output name
