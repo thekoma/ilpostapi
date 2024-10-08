@@ -11,10 +11,9 @@ build:
   local:
     useBuildkit: true
 manifests:
-  rawYaml:
-    - deploy/k8s/deployment.yaml
-    - deploy/k8s/secret.yaml
-    - deploy/k8s/service.yaml
+  kustomize:
+    paths:
+    - "deploy/k8s"
 portForward:
   - resourceType: deployment
     resourceName: ilpostapi
