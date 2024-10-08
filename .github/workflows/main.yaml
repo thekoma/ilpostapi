@@ -33,9 +33,7 @@ jobs:
   create-release:
     needs: build-and-push # Run after the build job
     runs-on: ubuntu-latest
-    permissions:
-      releases: write-all # Required to create releases
-
+    permissions: write-all
     steps:
       - name: Download built artifact
         uses: actions/download-artifact@v3
