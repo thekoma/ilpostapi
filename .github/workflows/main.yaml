@@ -36,16 +36,9 @@ jobs:
     runs-on: ubuntu-latest
     permissions: write-all
     steps:
-      - name: Download built artifact
-        uses: actions/download-artifact@v3
-        with:
-          name: ${{ github.event.repository.name }}
-
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          files: |
-            ${{ github.event.repository.name }} # Upload the downloaded artifact
           tag_name: ${{ github.ref_name }}
           name: Release ${{ github.ref_name }}
           body: Automated release for tag ${{ github.ref_name }}
