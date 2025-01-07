@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ podcast.title }} - Episodi - Il Post</title>
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', path='/images/favicon.svg') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:ital,wght@0,400;0,600;1,400&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', path='/css/styles.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        :root {
+            --podcast-cover: url("{{ podcast.image }}");
+        }
+    </style>
+</head>
+<body class="podcast-episodes-page">
+    <header>
+        <div class="container">
+            <h1>
+                <div class="header-logo-container">
+                    <img src="{{ url_for('static', path='/images/logo.svg') }}" alt="Il Post" class="header-logo">
+                </div>
+                {{ podcast.title }}
+            </h1>
+            <p>{{ podcast.description }}</p>
+            <div class="podcast-meta">
+                <span><i class="fas fa-microphone"></i> {{ podcast.author }}</span>
+                <a href="/podcast/{{ podcast.id }}/rss" class="rss-button">
+                    <i class="fas fa-rss"></i> RSS Feed
+                </a>
+                <a href="/" class="back-button">
+                    <i class="fas fa-arrow-left"></i> Torna alla directory
+                </a>
+            </div>
+        </div>
+    </header>
+
+    <main class="container">
+        <div class="episodes-table">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Episodio</th>
+                        <th>Data</th>
+                        <th>Durata</th>
+                        <th>Azioni</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for episode in episodes %}
+                    <tr>
+                        <td>
+                            <div class="episode-title">{{ episode.title }}</div>
+                            {% if episode.description %}
+                            <div class="episode-description">{{ episode.description }}</div>
+                            {% endif %}
+                        </td>
+                        <td>{{ episode.publish_date }}</td>
+                        <td>{{ format_duration(episode.milliseconds) }}</td>
+                        <td class="actions">
+                            <button class="play-button" 
+                                    data-audio="{{ episode.episode_raw_url }}"
+                                    data-podcast-id="{{ podcast.id }}"
+                                    data-podcast-image="{{ podcast.image }}">
+                                <i class="fas fa-play"></i>
+                            </button>
+                            <a href="{{ episode.episode_raw_url }}" class="download-button" download>
+                                <i class="fas fa-download"></i>
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        
+        <div id="audio-player" class="audio-player">
+            <button class="player-toggle" onclick="togglePlayer(this)">
+                <i class="fas fa-chevron-down"></i>
+            </button>
+            <div class="player-content">
+                <div class="podcast-thumbnail">
+                    <img id="podcast-cover" src="" alt="Copertina podcast">
+                </div>
+                <div class="player-main">
+                    <div class="player-controls">
+                        <button id="prev-episode" class="control-button" disabled>
+                            <i class="fas fa-step-backward"></i>
+                        </button>
+                        <audio id="player" controls>
+                            Il tuo browser non supporta l'elemento audio.
+                        </audio>
+                        <button id="next-episode" class="control-button" disabled>
+                            <i class="fas fa-step-forward"></i>
+                        </button>
+                    </div>
+                    <div class="now-playing">
+                        <span id="now-playing-title"></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="pagination">
+            <div class="pagination-info">
+                Mostrando {{ (pagination.current_page - 1) * pagination.per_page + 1 }} - 
+                {{ min(pagination.current_page * pagination.per_page, pagination.total_episodes) }} 
+                di {{ pagination.total_episodes }} episodi
+            </div>
+            <div class="pagination-controls">
+                {% if pagination.has_prev %}
+                <a href="?page={{ pagination.current_page - 1 }}&per_page={{ pagination.per_page }}" 
+                   class="page-button">
+                    <i class="fas fa-chevron-left"></i>
+                </a>
+                {% endif %}
+
+                {% for p in pagination.pages %}
+                <a href="?page={{ p }}&per_page={{ pagination.per_page }}" 
+                   class="page-button {% if p == pagination.current_page %}active{% endif %}">
+                    {{ p }}
+                </a>
+                {% endfor %}
+
+                {% if pagination.has_next %}
+                <a href="?page={{ pagination.current_page + 1 }}&per_page={{ pagination.per_page }}" 
+                   class="page-button">
+                    <i class="fas fa-chevron-right"></i>
+                </a>
+                {% endif %}
+            </div>
+            <div class="per-page-selector">
+                <label for="per-page">Episodi per pagina:</label>
+                <select id="per-page" onchange="changePerPage(this.value)">
+                    {% for n in [10, 20, 50, 100] %}
+                    <option value="{{ n }}" {% if n == pagination.per_page %}selected{% endif %}>{{ n }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+    </main>
+
+    <footer>
+        <div class="container">
+            <p>© {{ year }} Il Post - Tutti i diritti riservati</p>
+        </div>
+    </footer>
+
+    <div class="theme-switcher">
+        <select id="theme-select" onchange="changeTheme(this.value)">
+            <option value="latte">Catppuccin Latte</option>
+            <option value="frappe">Catppuccin Frappé</option>
+            <option value="macchiato">Catppuccin Macchiato</option>
+            <option value="mocha">Catppuccin Mocha</option>
+        </select>
+    </div>
+
+    <script src="{{ url_for('static', path='/js/player.js') }}"></script>
+
+    <script>
+        function changePerPage(value) {
+            window.location.href = `?page=1&per_page=${value}`;
+        }
+
+        // Carica il tema salvato o usa il default
+        document.addEventListener('DOMContentLoaded', function() {
+            const savedTheme = getCookie('theme') || 'macchiato';
+            document.documentElement.setAttribute('data-theme', savedTheme);
+            document.getElementById('theme-select').value = savedTheme;
+        });
+
+        function changeTheme(theme) {
+            document.documentElement.setAttribute('data-theme', theme);
+            setCookie('theme', theme, 365);
+        }
+
+        // Funzioni per i cookie
+        function setCookie(name, value, days) {
+            const expires = new Date();
+            expires.setTime(expires.getTime() + (days * 24 * 60 * 60 * 1000));
+            document.cookie = `${name}=${value};expires=${expires.toUTCString()};path=/`;
+        }
+
+        function getCookie(name) {
+            const value = `; ${document.cookie}`;
+            const parts = value.split(`; ${name}=`);
+            if (parts.length === 2) return parts.pop().split(';').shift();
+            return null;
+        }
+
+        function togglePlayer(button) {
+            const player = document.getElementById('audio-player');
+            player.classList.toggle('minimized');
+            button.querySelector('i').classList.toggle('fa-chevron-up');
+            button.querySelector('i').classList.toggle('fa-chevron-down');
+        }
+    </script>
+</body>
+</html> 

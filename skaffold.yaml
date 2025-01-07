@@ -7,7 +7,7 @@ build:
     - image: ilpostapi
       sync:
         infer:
-          - src/*
+          - src/**
   local:
     useBuildkit: true
 manifests:
