@@ -56,7 +56,7 @@
                             <div class="episode-description">{{ episode.description }}</div>
                             {% endif %}
                         </td>
-                        <td>{{ episode.publish_date }}</td>
+                        <td>{{ episode.date.split('+')[0].replace('T', ' ') }}</td>
                         <td>{{ format_duration(episode.milliseconds) }}</td>
                         <td class="actions">
                             <button class="play-button" 
@@ -76,6 +76,9 @@
         </div>
         
         <div id="audio-player" class="audio-player">
+            <button class="player-close" onclick="closePlayer(this)">
+                <i class="fas fa-times"></i>
+            </button>
             <button class="player-toggle" onclick="togglePlayer(this)">
                 <i class="fas fa-chevron-down"></i>
             </button>

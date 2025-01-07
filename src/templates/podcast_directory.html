@@ -42,10 +42,23 @@
         <div class="podcast-grid">
             {% for podcast in podcasts %}
             <div class="podcast-card">
-                <img src="{{ podcast.image }}" alt="{{ podcast.title }}" class="podcast-image">
+                <a href="/podcast/{{ podcast.id }}/episodes" class="podcast-image-link">
+                    <img src="{{ podcast.image }}" alt="{{ podcast.title }}" class="podcast-image">
+                </a>
                 <div class="podcast-info">
                     <h2>{{ podcast.title }}</h2>
                     <p class="author"><i class="fas fa-microphone"></i> {{ podcast.author }}</p>
+                    {% if podcast.last_episode_date %}
+                    <div class="last-episode-info">
+                        <p class="last-episode-date">
+                            <i class="fas fa-calendar"></i> {{ podcast.last_episode_date.split('+')[0].split('T')[0] }}
+                            <i class="fas fa-clock"></i> {{ podcast.last_episode_date.split('+')[0].split('T')[1] }}
+                        </p>
+                        <p class="last-episode-title">
+                            <i class="fas fa-podcast"></i> {{ podcast.last_episode_title }}
+                        </p>
+                    </div>
+                    {% endif %}
                     <p class="description">{{ podcast.description }}</p>
                     <div class="podcast-actions">
                         <a href="{{ podcast.rss_url }}" class="rss-button">
@@ -65,6 +78,9 @@
     </main>
 
     <div id="audio-player" class="audio-player">
+        <button class="player-close" onclick="closePlayer(this)">
+            <i class="fas fa-times"></i>
+        </button>
         <button class="player-toggle" onclick="togglePlayer(this)">
             <i class="fas fa-chevron-down"></i>
         </button>
