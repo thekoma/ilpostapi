@@ -1,7 +1,7 @@
 import os
 import time
 from functools import lru_cache
-from datetime import datetime
+from datetime import datetime, timedelta
 import xml.etree.ElementTree as ET
 import html  # Aggiungi questo import all'inizio del file
 import re  # Aggiungi questo import per la funzione re
@@ -34,6 +34,10 @@ API_AUTH_LOGIN = "https://api-prod.ilpost.it./user/v1/auth/login"
 
 # Token caching configuration
 TOKEN_CACHE_TTL = 2 * 60 * 60  # 2 hours in seconds
+
+# Aggiungi queste variabili globali all'inizio del file
+EPISODE_CACHE = {}
+CACHE_TTL = 15 * 60  # 15 minuti in secondi
 
 # --- FastAPI App ---
 app = FastAPI()
@@ -437,22 +441,81 @@ async def get_podcast_rss(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+async def get_last_episode_date(podcast_id: int) -> str:
+    """Recupera la data dell'ultimo episodio con caching."""
+    current_time = datetime.now().timestamp()
+    
+    # Controlla se abbiamo una versione cached valida
+    if podcast_id in EPISODE_CACHE:
+        cached_data, cache_time = EPISODE_CACHE[podcast_id]
+        if current_time - cache_time < CACHE_TTL:
+            return cached_data
+    
+    # Se non c'è cache valida, recupera i dati
+    last_episode = await fetch_episodes(podcast_id, page=1, hits=1)
+    last_episode_date = None
+    if last_episode and last_episode.get('data') and len(last_episode['data']) > 0:
+        last_episode_date = last_episode['data'][0].get('date')
+    
+    # Salva nella cache
+    EPISODE_CACHE[podcast_id] = (last_episode_date, current_time)
+    
+    return last_episode_date
+
+
+async def get_last_episode_info(podcast_id: int) -> tuple:
+    """Recupera le informazioni dell'ultimo episodio con caching."""
+    current_time = datetime.now().timestamp()
+    
+    # Controlla se abbiamo una versione cached valida
+    if podcast_id in EPISODE_CACHE:
+        cached_data, cache_time = EPISODE_CACHE[podcast_id]
+        if current_time - cache_time < CACHE_TTL:
+            return cached_data
+    
+    # Se non c'è cache valida, recupera i dati
+    last_episode = await fetch_episodes(podcast_id, page=1, hits=1)
+    last_episode_date = None
+    last_episode_title = None
+    if last_episode and last_episode.get('data') and len(last_episode['data']) > 0:
+        last_episode_date = last_episode['data'][0].get('date')
+        last_episode_title = last_episode['data'][0].get('title')
+    
+    # Salva nella cache
+    cached_info = (last_episode_date, last_episode_title)
+    EPISODE_CACHE[podcast_id] = (cached_info, current_time)
+    
+    return cached_info
+
+
 @app.get("/", response_class=HTMLResponse)
 @app.get("/podcasts/directory", response_class=HTMLResponse)
 async def podcast_directory(request: Request):
     """Mostra la directory di tutti i podcast come pagina principale."""
     podcasts = await fetch_podcasts(page=1, hits=100)
     
-    # Prepariamo i dati per il template
-    podcast_list = [{
-        'id': podcast['id'],
-        'title': clean_html_text(podcast['title']),  # Puliamo il titolo
-        'image': podcast['image'],
-        'description': clean_html_text(podcast['description']),  # Puliamo la descrizione
-        'author': clean_html_text(podcast['author']),  # Puliamo l'autore
-        'rss_url': f"/podcast/{podcast['id']}/rss",
-        'slug': podcast['slug']
-    } for podcast in podcasts['data']]
+    # Prepariamo i dati per il template, includendo l'ultimo episodio
+    podcast_list = []
+    for podcast in podcasts['data']:
+        last_episode_date, last_episode_title = await get_last_episode_info(podcast['id'])
+        
+        podcast_list.append({
+            'id': podcast['id'],
+            'title': clean_html_text(podcast['title']),
+            'image': podcast['image'],
+            'description': clean_html_text(podcast['description']),
+            'author': clean_html_text(podcast['author']),
+            'rss_url': f"/podcast/{podcast['id']}/rss",
+            'slug': podcast['slug'],
+            'last_episode_date': last_episode_date,
+            'last_episode_title': clean_html_text(last_episode_title) if last_episode_title else None
+        })
+    
+    # Ordiniamo i podcast per data dell'ultimo episodio
+    podcast_list.sort(
+        key=lambda x: x['last_episode_date'] if x['last_episode_date'] else '1970-01-01T00:00:00+00:00',
+        reverse=True
+    )
     
     return templates.TemplateResponse(
         "podcast_directory.html",

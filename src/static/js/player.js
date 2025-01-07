@@ -22,6 +22,10 @@ class PodcastPlayer {
         window.addEventListener('beforeunload', () => this.savePlayerState());
         
         this.initializeControls();
+        
+        // Aggiungi il metodo per chiudere il player
+        this.closePlayer = this.closePlayer.bind(this);
+        window.closePlayer = () => this.closePlayer();
     }
     
     savePlayerState() {
@@ -215,6 +219,25 @@ class PodcastPlayer {
 
         // Mostriamo la thumbnail
         document.querySelector('.podcast-thumbnail').style.display = 'block';
+    }
+    
+    closePlayer() {
+        // Ferma la riproduzione
+        this.player.pause();
+        this.player.currentTime = 0;
+        
+        // Nascondi il player
+        const audioPlayer = document.getElementById('audio-player');
+        audioPlayer.classList.remove('visible');
+        audioPlayer.classList.remove('minimized');
+        
+        // Reset dello stato
+        this.nowPlayingTitle.textContent = '';
+        this.currentEpisodeIndex = -1;
+        this.currentPodcastId = null;
+        
+        // Pulisci il localStorage
+        localStorage.removeItem('playerState');
     }
 }
 

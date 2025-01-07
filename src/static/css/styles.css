@@ -64,10 +64,22 @@ header h1 {
     transform: translateY(-4px);
 }
 
+.podcast-image-link {
+    display: block;
+    overflow: hidden;
+    cursor: pointer;
+    transition: transform 0.2s ease;
+}
+
+.podcast-image-link:hover .podcast-image {
+    transform: scale(1.05);
+}
+
 .podcast-image {
     width: 100%;
     height: 200px;
     object-fit: cover;
+    transition: transform 0.3s ease;
 }
 
 .podcast-info {
@@ -85,7 +97,7 @@ header h1 {
 .author {
     color: var(--primary-color);
     font-size: 0.9rem;
-    margin-bottom: 1rem;
+    margin-bottom: 0.5rem;
 }
 
 .description {
@@ -883,4 +895,70 @@ body.podcast-episodes-page::after {
 /* Aggiungi questa classe per i podcast che non corrispondono alla ricerca */
 .podcast-card.hidden {
     display: none;
+}
+
+/* Aggiungiamo lo stile per il pulsante di chiusura */
+.player-close {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: none;
+    border: none;
+    color: var(--text-color);
+    cursor: pointer;
+    padding: 5px;
+    font-size: 1.2rem;
+    opacity: 0.7;
+    transition: all 0.2s ease;
+}
+
+.player-close:hover {
+    opacity: 1;
+    transform: scale(1.1);
+}
+
+.last-episode-date {
+    color: var(--text-color);
+    font-size: 0.9rem;
+    margin-bottom: 1rem;
+    opacity: 0.8;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.last-episode-date i {
+    color: var(--primary-color);
+}
+
+/* Aggiustiamo il margine tra gli elementi */
+.author {
+    margin-bottom: 0.5rem;  /* Riduciamo il margine per far spazio alla data */
+}
+
+.last-episode-info {
+    margin-bottom: 1rem;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid var(--surface);
+}
+
+.last-episode-date, .last-episode-title {
+    color: var(--text-color);
+    font-size: 0.9rem;
+    opacity: 0.8;
+    display: flex;
+    align-items: center;
+    gap: 0.8rem;
+    margin-bottom: 0.3rem;
+}
+
+.last-episode-title {
+    font-family: var(--font-serif);
+    font-style: italic;
+}
+
+.last-episode-date i, .last-episode-title i {
+    color: var(--primary-color);
+    width: 1em;
+    text-align: center;
 } 
