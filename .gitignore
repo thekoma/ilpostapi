@@ -1,5 +1,6 @@
 .env
 deploy/k8s/secret.yaml
+deploy/k8s/ingress.yaml
 .venv/**
 .venv/
 __pycache__

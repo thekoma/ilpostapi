@@ -1,0 +1,886 @@
+:root {
+    --primary-color: #1a73e8;
+    --text-color: #202124;
+    --background-color: #f8f9fa;
+    --card-background: #ffffff;
+    --shadow-color: rgba(0, 0, 0, 0.1);
+    --font-serif: 'Crimson Pro', Georgia, serif;
+    --font-sans: 'Inter', system-ui, sans-serif;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: var(--font-sans);
+    background-color: var(--background-color);
+    color: var(--text-color);
+    line-height: 1.6;
+    padding-bottom: 120px;
+}
+
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 20px;
+}
+
+header {
+    background-color: var(--card-background);
+    color: var(--text-color);
+    padding: 2rem 0;
+    margin-bottom: 2rem;
+    border-bottom: 1px solid var(--surface);
+}
+
+header h1 {
+    display: flex;
+    align-items: center;
+    font-size: 2.5rem;
+    margin-bottom: 0.5rem;
+    font-family: var(--font-serif);
+    letter-spacing: -0.02em;
+}
+
+.podcast-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 2rem;
+    padding: 2rem 0;
+}
+
+.podcast-card {
+    background: var(--card-background);
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 4px 6px var(--shadow-color);
+    transition: transform 0.2s ease;
+}
+
+.podcast-card:hover {
+    transform: translateY(-4px);
+}
+
+.podcast-image {
+    width: 100%;
+    height: 200px;
+    object-fit: cover;
+}
+
+.podcast-info {
+    padding: 1.5rem;
+}
+
+.podcast-info h2 {
+    font-size: 1.25rem;
+    margin-bottom: 0.5rem;
+    color: var(--text-color);
+    font-family: var(--font-serif);
+    letter-spacing: -0.02em;
+}
+
+.author {
+    color: var(--primary-color);
+    font-size: 0.9rem;
+    margin-bottom: 1rem;
+}
+
+.description {
+    font-size: 0.9rem;
+    margin-bottom: 1.5rem;
+    color: #5f6368;
+}
+
+.podcast-actions {
+    display: flex;
+    gap: 1rem;
+}
+
+.rss-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    background-color: var(--primary-color);
+    color: white;
+    padding: 0.5rem 1rem;
+    border-radius: 20px;
+    text-decoration: none;
+    font-size: 0.9rem;
+    transition: background-color 0.2s ease;
+}
+
+.rss-button:hover {
+    background-color: #1557b0;
+}
+
+footer {
+    text-align: center;
+    padding: 2rem 0;
+    color: #5f6368;
+    margin-top: 2rem;
+}
+
+@media (max-width: 768px) {
+    .podcast-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Stili per la tabella episodi */
+.episodes-table {
+    background: var(--card-background);
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 4px 6px var(--shadow-color);
+    margin: 2rem 0;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+th, td {
+    padding: 1rem;
+    text-align: left;
+    border-bottom: 1px solid #eee;
+}
+
+th {
+    background: #f5f5f5;
+    font-weight: 600;
+}
+
+.episode-title {
+    font-weight: 500;
+    margin-bottom: 0.5rem;
+    font-family: var(--font-serif);
+    letter-spacing: -0.02em;
+}
+
+.episode-description {
+    font-size: 0.9rem;
+    color: #666;
+}
+
+.actions {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.play-button, .download-button {
+    background: var(--primary-color);
+    color: white;
+    border: none;
+    border-radius: 50%;
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.play-button:hover, .download-button:hover {
+    background: #1557b0;
+}
+
+/* Audio Player */
+.audio-player {
+    display: none;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: var(--card-background);
+    padding: 1rem;
+    box-shadow: 0 -2px 10px var(--shadow-color);
+    z-index: 1000;
+    transition: transform 0.3s ease;
+    overflow: hidden; /* Per contenere lo sfondo sfocato */
+}
+
+/* Aggiungiamo lo sfondo sfocato */
+.audio-player::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-image: var(--background-image);
+    background-size: cover;
+    background-position: center;
+    filter: blur(10px);
+    opacity: 0.4;
+    z-index: -1;
+    transform: scale(1.1);
+}
+
+/* Aggiustiamo anche l'overlay per bilanciare meglio l'effetto */
+.audio-player::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: var(--card-background);
+    opacity: 0.65;
+    z-index: -1;
+}
+
+/* Aggiustiamo il contenuto del player */
+.player-content {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    gap: 2rem;
+    max-width: 1000px;  /* Aumentiamo leggermente per fare spazio all'immagine */
+    margin: 0 auto;
+    padding: 0 1rem;
+}
+
+.player-controls {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+}
+
+.audio-player audio {
+    flex-grow: 1;
+    max-width: 600px;
+}
+
+.now-playing {
+    text-align: center;
+    margin-top: 0.5rem;
+    font-size: 0.9rem;
+    color: #666;
+    font-family: var(--font-serif);
+    font-style: italic;
+}
+
+/* Modifiche al template esistente */
+.podcast-actions {
+    display: flex;
+    gap: 1rem;
+}
+
+.episodes-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    background-color: #34a853;  /* Verde Google-style */
+    color: white;
+    padding: 0.5rem 1rem;
+    border-radius: 20px;
+    text-decoration: none;
+    font-size: 0.9rem;
+    transition: background-color 0.2s;
+}
+
+.episodes-button:hover {
+    background-color: #2d8e47;
+}
+
+.last-episode-button {
+    background-color: #ea4335;  /* Rosso Google-style */
+}
+
+.last-episode-button:hover {
+    background-color: #d33426;
+}
+
+/* Stili per la paginazione */
+.pagination {
+    margin: 2rem 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+}
+
+.pagination-info {
+    color: #666;
+    font-size: 0.9rem;
+}
+
+.pagination-controls {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.page-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 36px;
+    height: 36px;
+    padding: 0 0.5rem;
+    border-radius: 18px;
+    background: white;
+    border: 1px solid #ddd;
+    color: var(--text-color);
+    text-decoration: none;
+    transition: all 0.2s;
+}
+
+.page-button:hover {
+    background: #f5f5f5;
+}
+
+.page-button.active {
+    background: var(--primary-color);
+    color: white;
+    border-color: var(--primary-color);
+}
+
+.per-page-selector {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.per-page-selector select {
+    padding: 0.5rem;
+    border-radius: 4px;
+    border: 1px solid #ddd;
+    background: white;
+    cursor: pointer;
+}
+
+/* Catppuccin Themes */
+:root[data-theme="latte"] {
+    --primary-color: #8839ef;  /* Mauve */
+    --text-color: #4c4f69;     /* Text */
+    --background-color: #eff1f5; /* Base */
+    --card-background: #ffffff; /* Crust */
+    --shadow-color: rgba(76, 79, 105, 0.2); /* Text color with opacity */
+    --accent-green: #40a02b;   /* Green */
+    --accent-red: #d20f39;     /* Red */
+    --surface: #ccd0da;        /* Surface0 */
+    --overlay: #9ca0b0;        /* Overlay0 */
+}
+
+:root[data-theme="frappe"] {
+    --primary-color: #ca9ee6;  /* Mauve */
+    --text-color: #c6d0f5;     /* Text */
+    --background-color: #303446; /* Base */
+    --card-background: #232634; /* Crust */
+    --shadow-color: rgba(198, 208, 245, 0.2);
+    --accent-green: #a6d189;   /* Green */
+    --accent-red: #e78284;     /* Red */
+    --surface: #414559;        /* Surface0 */
+    --overlay: #737994;        /* Overlay0 */
+}
+
+:root[data-theme="macchiato"] {
+    --primary-color: #c6a0f6;  /* Mauve */
+    --text-color: #cad3f5;     /* Text */
+    --background-color: #24273a; /* Base */
+    --card-background: #181926; /* Crust */
+    --shadow-color: rgba(202, 211, 245, 0.2);
+    --accent-green: #a6da95;   /* Green */
+    --accent-red: #ed8796;     /* Red */
+    --surface: #363a4f;        /* Surface0 */
+    --overlay: #6e738d;        /* Overlay0 */
+}
+
+:root[data-theme="mocha"] {
+    --primary-color: #cba6f7;  /* Mauve */
+    --text-color: #cdd6f4;     /* Text */
+    --background-color: #1e1e2e; /* Base */
+    --card-background: #11111b; /* Crust */
+    --shadow-color: rgba(205, 214, 244, 0.2);
+    --accent-green: #a6e3a1;   /* Green */
+    --accent-red: #f38ba8;     /* Red */
+    --surface: #313244;        /* Surface0 */
+    --overlay: #6c7086;        /* Overlay0 */
+}
+
+/* Aggiorniamo i colori esistenti per usare le nuove variabili */
+.episodes-button {
+    background-color: var(--accent-green);
+}
+
+.episodes-button:hover {
+    background-color: var(--accent-green);
+    filter: brightness(90%);
+}
+
+.last-episode-button {
+    background-color: var(--accent-red);
+}
+
+.last-episode-button:hover {
+    background-color: var(--accent-red);
+    filter: brightness(90%);
+}
+
+/* Theme Switcher */
+.theme-switcher {
+    position: fixed;
+    top: 1rem;
+    right: 1rem;
+    z-index: 1000;
+}
+
+.theme-switcher select {
+    padding: 0.5rem;
+    border-radius: 8px;
+    border: 1px solid var(--surface);
+    background: var(--card-background);
+    color: var(--text-color);
+    cursor: pointer;
+    font-family: 'Inter', sans-serif;
+}
+
+/* Aggiorniamo altri elementi per usare i nuovi colori */
+th {
+    background: var(--surface);
+}
+
+.episode-description {
+    color: var(--overlay);
+}
+
+.pagination-info {
+    color: var(--overlay);
+}
+
+.page-button {
+    background: var(--card-background);
+    border-color: var(--surface);
+    color: var(--text-color);
+}
+
+.page-button:hover {
+    background: var(--surface);
+}
+
+/* Aggiorniamo gli stili per la pagina degli episodi */
+.audio-player {
+    background: var(--card-background);
+    border-top: 1px solid var(--surface);
+}
+
+.now-playing {
+    color: var(--text-color);
+}
+
+.podcast-meta {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+    margin-top: 1rem;
+    color: var(--text-color);
+}
+
+.back-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    background-color: var(--surface);
+    color: var(--text-color);
+    padding: 0.5rem 1rem;
+    border-radius: 20px;
+    text-decoration: none;
+    font-size: 0.9rem;
+    transition: background-color 0.2s;
+}
+
+.back-button:hover {
+    background-color: var(--overlay);
+}
+
+/* Aggiorniamo i colori della tabella */
+td {
+    border-bottom: 1px solid var(--surface);
+}
+
+.play-button, .download-button {
+    background: var(--primary-color);
+}
+
+.play-button:hover, .download-button:hover {
+    background: var(--primary-color);
+    filter: brightness(90%);
+}
+
+/* Aggiorniamo i colori del player audio */
+audio {
+    filter: invert(var(--player-invert));
+}
+
+/* Aggiungiamo una variabile per l'inversione del player audio per tema */
+:root[data-theme="latte"] {
+    --player-invert: 0;
+}
+
+:root[data-theme="frappe"],
+:root[data-theme="macchiato"],
+:root[data-theme="mocha"] {
+    --player-invert: 1;
+}
+
+/* Stili per i controlli del player */
+.player-controls {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+    margin-bottom: 0.5rem;
+}
+
+.control-button {
+    background: var(--primary-color);
+    color: white;
+    border: none;
+    border-radius: 50%;
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.control-button:disabled {
+    background: var(--surface);
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
+.control-button:not(:disabled):hover {
+    background: var(--primary-color);
+    filter: brightness(90%);
+}
+
+/* Aggiorniamo il layout del player audio */
+.audio-player {
+    display: none;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: var(--card-background);
+    padding: 1rem;
+    box-shadow: 0 -2px 10px var(--shadow-color);
+    z-index: 1000;
+}
+
+.audio-player.visible {
+    display: block;
+}
+
+.audio-player audio {
+    width: 100%;
+    max-width: 600px;
+}
+
+/* Stili per i tooltip */
+.control-button {
+    position: relative;
+}
+
+.control-button[title]:hover::after {
+    content: attr(title);
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 0.5rem;
+    background: var(--card-background);
+    color: var(--text-color);
+    border: 1px solid var(--surface);
+    border-radius: 4px;
+    font-size: 0.9rem;
+    white-space: nowrap;
+    z-index: 1000;
+    margin-bottom: 0.5rem;
+    box-shadow: 0 2px 4px var(--shadow-color);
+    animation: tooltip-fade-in 0.2s ease-in-out;
+}
+
+@keyframes tooltip-fade-in {
+    from {
+        opacity: 0;
+        transform: translate(-50%, 10px);
+    }
+    to {
+        opacity: 1;
+        transform: translate(-50%, 0);
+    }
+}
+
+/* Aggiungiamo una freccia al tooltip */
+.control-button[title]:hover::before {
+    content: '';
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 6px solid transparent;
+    border-top-color: var(--surface);
+    margin-bottom: -6px;
+    animation: tooltip-fade-in 0.2s ease-in-out;
+}
+
+/* Aggiungiamo un pulsante per minimizzare/massimizzare il player */
+.player-toggle {
+    position: absolute;
+    top: -24px;
+    right: 20px;
+    background: var(--card-background);
+    border: 1px solid var(--surface);
+    border-radius: 4px 4px 0 0;
+    padding: 4px 12px;
+    cursor: pointer;
+    color: var(--text-color);
+    font-size: 0.8rem;
+}
+
+.audio-player.minimized {
+    transform: translateY(calc(100% - 40px));
+}
+
+/* Aggiungiamo lo stile per l'immagine del podcast */
+.player-content {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    gap: 2rem;
+    max-width: 1000px;  /* Aumentiamo leggermente per fare spazio all'immagine */
+    margin: 0 auto;
+    padding: 0 1rem;
+}
+
+.podcast-thumbnail {
+    flex-shrink: 0;
+    width: 60px;
+    height: 60px;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 2px 8px var(--shadow-color);
+    transition: transform 0.2s ease;
+    display: block;
+}
+
+.podcast-thumbnail:hover {
+    transform: scale(1.05);
+}
+
+.podcast-thumbnail img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.player-main {
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+/* Aggiustiamo il layout quando il player è minimizzato */
+.audio-player.minimized .podcast-thumbnail {
+    width: 40px;
+    height: 40px;
+    margin-right: 1rem;
+}
+
+.audio-player.minimized .player-content {
+    padding: 0 0.5rem;
+}
+
+.header-logo-container {
+    background: var(--card-background);
+    padding: 12px 20px;
+    border-radius: 12px;
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    margin-right: 1rem;
+    box-shadow: 0 2px 10px var(--shadow-color);
+}
+
+/* Effetto aura per temi chiari */
+:root[data-theme="latte"] .header-logo-container {
+    box-shadow: 0 4px 20px rgba(76, 79, 105, 0.2),
+                0 2px 8px rgba(76, 79, 105, 0.1),
+                inset 0 0 0 1px rgba(76, 79, 105, 0.05);
+    background: linear-gradient(
+        135deg,
+        rgba(255, 255, 255, 1) 0%,
+        rgba(239, 241, 245, 0.8) 100%
+    );
+}
+
+/* Effetto aura per temi scuri */
+:root[data-theme="frappe"] .header-logo-container,
+:root[data-theme="macchiato"] .header-logo-container,
+:root[data-theme="mocha"] .header-logo-container {
+    box-shadow: 0 4px 20px rgba(205, 214, 244, 0.15),
+                0 2px 8px rgba(205, 214, 244, 0.1),
+                inset 0 0 0 1px rgba(205, 214, 244, 0.05);
+    background: linear-gradient(
+        135deg,
+        rgba(255, 255, 255, 0.95) 0%,
+        rgba(239, 241, 245, 0.9) 100%
+    );
+}
+
+/* Animazione hover */
+.header-logo-container:hover {
+    transform: translateY(-1px);
+    transition: all 0.2s ease;
+}
+
+.header-logo {
+    height: 38px;
+    width: auto;
+    filter: drop-shadow(0 2px 4px var(--shadow-color));
+}
+
+/* Aggiorniamo i colori del logo per i temi */
+:root[data-theme="latte"] .header-logo path:first-child {
+    fill: #242424;
+}
+
+/* Il logo è bianco di default per i temi scuri */
+:root[data-theme="frappe"] .header-logo path:first-child,
+:root[data-theme="macchiato"] .header-logo path:first-child,
+:root[data-theme="mocha"] .header-logo path:first-child {
+    fill: #242424;
+}
+
+/* Quando il tema è scuro, invertiamo i colori del logo */
+:root[data-theme="frappe"] .header-logo path:first-child,
+:root[data-theme="macchiato"] .header-logo path:first-child,
+:root[data-theme="mocha"] .header-logo path:first-child {
+    fill: #ffffff;
+}
+
+/* Aggiorniamo i colori del logo per i temi chiari */
+:root[data-theme="latte"] .header-logo path:first-child {
+    fill: #242424;
+}
+
+/* Il logo è già bianco di default per i temi scuri */
+
+/* Aggiungiamo lo stile per lo sfondo sfocato della pagina episodi */
+body.podcast-episodes-page {
+    position: relative;
+    background-color: transparent;  /* Rimuoviamo il background di default */
+}
+
+body.podcast-episodes-page::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-image: var(--podcast-cover);
+    background-size: cover;
+    background-position: center;
+    filter: blur(20px);
+    opacity: 0.8;  /* Aumentato da 0.5 a 0.8 */
+    z-index: -2;
+    transform: scale(1.1);
+}
+
+/* Overlay ancora più trasparente */
+body.podcast-episodes-page::after {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: var(--background-color);
+    opacity: 0.4;  /* Ridotto da 0.6 a 0.4 per far vedere ancora meglio lo sfondo */
+    z-index: -1;
+}
+
+/* Aggiorniamo i font per la pagina episodi */
+.podcast-episodes-page .episode-title {
+    font-family: var(--font-serif);
+    font-weight: 600;
+    font-size: 1.1rem;
+    margin-bottom: 0.5rem;
+    color: var(--text-color);
+}
+
+.podcast-episodes-page .episode-description {
+    font-family: var(--font-serif);
+    font-style: italic;
+    font-size: 0.95rem;
+    color: var(--text-color);
+    opacity: 0.9;
+}
+
+.podcast-episodes-page h1 {
+    font-family: var(--font-serif);
+    letter-spacing: -0.02em;
+}
+
+.podcast-episodes-page .podcast-meta {
+    font-family: var(--font-sans);
+    font-size: 0.9rem;
+}
+
+/* Stili per la barra di ricerca */
+.search-container {
+    margin: 2rem auto;
+}
+
+.search-box {
+    position: relative;
+    max-width: 600px;
+    margin: 0 auto;
+}
+
+.search-box i {
+    position: absolute;
+    left: 1rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-color);
+    opacity: 0.6;
+}
+
+#podcast-search {
+    width: 100%;
+    padding: 1rem 1rem 1rem 3rem;
+    border: 1px solid var(--surface);
+    border-radius: 12px;
+    font-size: 1.1rem;
+    background: var(--card-background);
+    color: var(--text-color);
+    font-family: var(--font-serif);
+    transition: all 0.2s ease;
+}
+
+#podcast-search:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px var(--primary-color);
+}
+
+/* Aggiungi questa classe per i podcast che non corrispondono alla ricerca */
+.podcast-card.hidden {
+    display: none;
+} 

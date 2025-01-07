@@ -24,8 +24,8 @@ spec:
               name: ilpostapi
           resources:
             limits:
-              cpu: 100m
-              memory: 100Mi
+              cpu: 500m
+              memory: 500Mi
             requests:
               cpu: 100m
               memory: 100Mi

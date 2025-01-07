@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Il Post - Directory Podcast</title>
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', path='/images/favicon.svg') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:ital,wght@0,400;0,600;1,400&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', path='/css/styles.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+    <div class="theme-switcher">
+        <select id="theme-select" onchange="changeTheme(this.value)">
+            <option value="latte">Catppuccin Latte</option>
+            <option value="frappe">Catppuccin Frappé</option>
+            <option value="macchiato">Catppuccin Macchiato</option>
+            <option value="mocha">Catppuccin Mocha</option>
+        </select>
+    </div>
+
+    <header>
+        <div class="container">
+            <h1>
+                <div class="header-logo-container">
+                    <img src="{{ url_for('static', path='/images/logo.svg') }}" alt="Il Post" class="header-logo">
+                </div>
+                Podcast
+            </h1>
+            <p>Tutti i podcast de Il Post, disponibili in RSS</p>
+        </div>
+    </header>
+
+    <div class="search-container container">
+        <div class="search-box">
+            <i class="fas fa-search"></i>
+            <input type="text" id="podcast-search" placeholder="Cerca podcast per titolo, descrizione o autore...">
+        </div>
+    </div>
+
+    <main class="container">
+        <div class="podcast-grid">
+            {% for podcast in podcasts %}
+            <div class="podcast-card">
+                <img src="{{ podcast.image }}" alt="{{ podcast.title }}" class="podcast-image">
+                <div class="podcast-info">
+                    <h2>{{ podcast.title }}</h2>
+                    <p class="author"><i class="fas fa-microphone"></i> {{ podcast.author }}</p>
+                    <p class="description">{{ podcast.description }}</p>
+                    <div class="podcast-actions">
+                        <a href="{{ podcast.rss_url }}" class="rss-button">
+                            <i class="fas fa-rss"></i> RSS Feed
+                        </a>
+                        <a href="/podcast/{{ podcast.id }}/episodes" class="episodes-button">
+                            <i class="fas fa-list"></i> Episodi
+                        </a>
+                        <a href="/podcast/{{ podcast.id }}/last" class="episodes-button last-episode-button" data-podcast-image="{{ podcast.image }}">
+                            <i class="fas fa-play"></i> Ultimo Episodio
+                        </a>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </main>
+
+    <div id="audio-player" class="audio-player">
+        <button class="player-toggle" onclick="togglePlayer(this)">
+            <i class="fas fa-chevron-down"></i>
+        </button>
+        <div class="player-content">
+            <div class="podcast-thumbnail">
+                <img id="podcast-cover" src="" alt="Copertina podcast">
+            </div>
+            <div class="player-main">
+                <div class="player-controls">
+                    <button id="prev-episode" class="control-button" disabled>
+                        <i class="fas fa-step-backward"></i>
+                    </button>
+                    <audio id="player" controls>
+                        Il tuo browser non supporta l'elemento audio.
+                    </audio>
+                    <button id="next-episode" class="control-button" disabled>
+                        <i class="fas fa-step-forward"></i>
+                    </button>
+                </div>
+                <div class="now-playing">
+                    <span id="now-playing-title"></span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <footer>
+        <div class="container">
+            <p>© {{ year }} Il Post - Tutti i diritti riservati</p>
+        </div>
+    </footer>
+
+    <script>
+        // Carica il tema salvato o usa il default
+        document.addEventListener('DOMContentLoaded', function() {
+            const savedTheme = getCookie('theme') || 'macchiato';
+            document.documentElement.setAttribute('data-theme', savedTheme);
+            document.getElementById('theme-select').value = savedTheme;
+        });
+
+        function changeTheme(theme) {
+            document.documentElement.setAttribute('data-theme', theme);
+            setCookie('theme', theme, 365);
+        }
+
+        function setCookie(name, value, days) {
+            const expires = new Date();
+            expires.setTime(expires.getTime() + (days * 24 * 60 * 60 * 1000));
+            document.cookie = `${name}=${value};expires=${expires.toUTCString()};path=/`;
+        }
+
+        function getCookie(name) {
+            const value = `; ${document.cookie}`;
+            const parts = value.split(`; ${name}=`);
+            if (parts.length === 2) return parts.pop().split(';').shift();
+            return null;
+        }
+
+        function togglePlayer(button) {
+            const player = document.getElementById('audio-player');
+            player.classList.toggle('minimized');
+            button.querySelector('i').classList.toggle('fa-chevron-up');
+            button.querySelector('i').classList.toggle('fa-chevron-down');
+        }
+    </script>
+
+    <script src="{{ url_for('static', path='/js/player.js') }}"></script>
+    <script src="{{ url_for('static', path='/js/search.js') }}"></script>
+</body>
+</html> 
