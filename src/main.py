@@ -1,7 +1,7 @@
 import os
 import time
 from functools import lru_cache
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import xml.etree.ElementTree as ET
 import html  # Aggiungi questo import all'inizio del file
 import re  # Aggiungi questo import per la funzione re
@@ -195,6 +195,36 @@ class PodcastRSSGenerator:
         self.base_url = None  # Non impostiamo più un default
         
     def generate_feed(self, podcast_data, episodes, request_base_url):
+        # Funzione helper per pulire il testo
+        def clean_text(text):
+            # Mappa di sostituzione per i caratteri speciali
+            char_map = {
+                "'": "'",
+                "'": "'",
+                """: '"',
+                """: '"',
+                "è": "e'",
+                "à": "a'",
+                "ì": "i'",
+                "ò": "o'",
+                "ù": "u'",
+                "é": "e'",
+                "…": "...",
+                "–": "-",
+                "—": "-",
+                "&": "e",
+                "&#8217;": "'",  # apostrofo
+                "&#8211;": "-",  # en dash
+                "&#8212;": "-",  # em dash
+            }
+            
+            for old, new in char_map.items():
+                text = text.replace(old, new)
+            
+            # Rimuove eventuali caratteri HTML residui
+            text = text.replace("&amp;", "e")
+            return text
+
         # Usiamo l'URL base dalla richiesta se non è configurato
         base_url = os.getenv("BASE_URL") or request_base_url.rstrip('/')
         
@@ -202,7 +232,8 @@ class PodcastRSSGenerator:
             "version": "2.0",
             "xmlns:itunes": "http://www.itunes.com/dtds/podcast-1.0.dtd",
             "xmlns:content": "http://purl.org/rss/1.0/modules/content/",
-            "xmlns:atom": "http://www.w3.org/2005/Atom"
+            "xmlns:atom": "http://www.w3.org/2005/Atom",
+            "xmlns:dc": "http://purl.org/dc/elements/1.1/"
         })
         
         channel = ET.SubElement(rss, "channel")
@@ -241,38 +272,34 @@ class PodcastRSSGenerator:
         itunes_image = ET.SubElement(channel, "itunes:image")
         itunes_image.set("href", podcast_data["image"])
         
+        # Autore in vari formati per massima compatibilità
+        # 1. iTunes author (specifico per podcast)
         itunes_author = ET.SubElement(channel, "itunes:author")
-        itunes_author.text = podcast_data["author"]
+        itunes_author.text = clean_text(podcast_data.get("author", "Il Post"))
         
-        # Funzione helper per pulire il testo
-        def clean_text(text):
-            # Mappa di sostituzione per i caratteri speciali
-            char_map = {
-                "'": "'",
-                "'": "'",
-                """: '"',
-                """: '"',
-                "è": "e'",
-                "à": "a'",
-                "ì": "i'",
-                "ò": "o'",
-                "ù": "u'",
-                "é": "e'",
-                "…": "...",
-                "–": "-",
-                "—": "-",
-                "&": "e",
-                "&#8217;": "'",  # apostrofo
-                "&#8211;": "-",  # en dash
-                "&#8212;": "-",  # em dash
-            }
-            
-            for old, new in char_map.items():
-                text = text.replace(old, new)
-            
-            # Rimuove eventuali caratteri HTML residui
-            text = text.replace("&amp;", "e")
-            return text
+        # 2. Dublin Core creator (per metadati standard)
+        dc_creator = ET.SubElement(channel, "dc:creator")
+        dc_creator.text = clean_text(podcast_data.get("author", "Il Post"))
+        
+        # 3. Webmaster con email (RFC 822 format)
+        webmaster = ET.SubElement(channel, "webMaster")
+        webmaster.text = "podcast@ilpost.it (Il Post)"
+        
+        # Copyright
+        copyright_elem = ET.SubElement(channel, "copyright")
+        copyright_elem.text = f"Copyright {datetime.now().year} Il Post"
+        
+        # Generator
+        generator = ET.SubElement(channel, "generator")
+        generator.text = "Il Post Podcast API"
+        
+        # TTL (15 minuti come il nostro cache)
+        ttl = ET.SubElement(channel, "ttl")
+        ttl.text = "15"
+        
+        # Last Build Date
+        last_build_date = ET.SubElement(channel, "lastBuildDate")
+        last_build_date.text = datetime.now(tz=timezone(timedelta(hours=1))).strftime("%a, %d %b %Y %H:%M:%S %z")
         
         # Aggiungiamo gli episodi
         for episode in episodes["data"]:
@@ -297,21 +324,138 @@ class PodcastRSSGenerator:
             
             if "description" in episode:
                 item_description = ET.SubElement(item, "description")
-                item_description.text = episode["description"]
+                item_description.text = clean_text(episode["description"])
+                
+                # Aggiungiamo anche content:encoded per il contenuto completo
+                content_encoded = ET.SubElement(item, "content:encoded")
+                content_encoded.text = f"<![CDATA[{episode['description']}]]>"
             
             # Aggiungiamo la data di pubblicazione
-            if "publish_date" in episode:
+            if "date" in episode:
                 pubDate = ET.SubElement(item, "pubDate")
                 try:
-                    pub_date = datetime.strptime(episode["publish_date"], "%Y-%m-%d %H:%M:%S")
-                    pubDate.text = pub_date.strftime("%a, %d %b %Y %H:%M:%S +0000")
-                except (ValueError, TypeError):
-                    pubDate.text = datetime.now().strftime("%a, %d %b %Y %H:%M:%S +0000")
+                    # Formato della data in ingresso: "2024-01-19T06:00:00+01:00"
+                    pub_date = datetime.fromisoformat(episode["date"])
+                    pubDate.text = pub_date.strftime("%a, %d %b %Y %H:%M:%S %z")
+                except (ValueError, TypeError) as e:
+                    print(f"Errore nel parsing della data: {e}")
+                    pubDate.text = datetime.now().strftime("%a, %d %b %Y %H:%M:%S +0100")
             
+            # Aggiungiamo dc:creator per l'autore dell'episodio
+            episode_author = ET.SubElement(item, "dc:creator")
+            episode_author.text = clean_text(podcast_data.get("author", "Il Post"))
+        
         return ET.tostring(rss, encoding="unicode", method="xml", xml_declaration=True)
 
 # Aggiungiamo l'istanza del generatore RSS
 rss_generator = PodcastRSSGenerator()
+
+class PodcastRDFGenerator:
+    def __init__(self):
+        self.base_url = None
+
+    def generate_feed(self, podcast_data, episodes, request_base_url):
+        def clean_text(text):
+            # Riusiamo la stessa funzione di pulizia del testo
+            char_map = {
+                "'": "'", "'": "'", """: '"', """: '"',
+                "è": "e'", "à": "a'", "ì": "i'", "ò": "o'", "ù": "u'", "é": "e'",
+                "…": "...", "–": "-", "—": "-", "&": "e",
+                "&#8217;": "'", "&#8211;": "-", "&#8212;": "-",
+            }
+            for old, new in char_map.items():
+                text = text.replace(old, new)
+            return text.replace("&amp;", "e")
+
+        base_url = os.getenv("BASE_URL") or request_base_url.rstrip('/')
+        
+        # Creazione dell'elemento root RDF
+        rdf = ET.Element("rdf:RDF", {
+            "xmlns:rdf": "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
+            "xmlns": "http://purl.org/rss/1.0/",
+            "xmlns:dc": "http://purl.org/dc/elements/1.1/",
+            "xmlns:content": "http://purl.org/rss/1.0/modules/content/",
+            "xmlns:itunes": "http://www.itunes.com/dtds/podcast-1.0.dtd"
+        })
+
+        # Creazione del channel
+        channel = ET.SubElement(rdf, "channel", {
+            "rdf:about": f"{base_url}/podcast/{podcast_data['id']}/rdf"
+        })
+
+        # Metadati del canale
+        title = ET.SubElement(channel, "title")
+        title.text = clean_text(podcast_data["title"])
+
+        link = ET.SubElement(channel, "link")
+        link.text = f"{base_url}/podcast/{podcast_data['id']}"
+
+        description = ET.SubElement(channel, "description")
+        description.text = clean_text(podcast_data.get("description", ""))
+
+        # Metadati Dublin Core
+        dc_language = ET.SubElement(channel, "dc:language")
+        dc_language.text = "it"
+
+        dc_publisher = ET.SubElement(channel, "dc:publisher")
+        dc_publisher.text = "Il Post"
+
+        # Struttura completa dell'autore per RDF
+        author = ET.SubElement(channel, "author")
+        author_name = ET.SubElement(author, "name")
+        author_name.text = clean_text(podcast_data.get("author", "Il Post"))
+        author_uri = ET.SubElement(author, "uri")
+        author_uri.text = "https://www.ilpost.it"
+        
+        dc_creator = ET.SubElement(channel, "dc:creator")
+        dc_creator.text = clean_text(podcast_data.get("author", "Il Post"))
+
+        # Lista degli item
+        items = ET.SubElement(channel, "items")
+        seq = ET.SubElement(items, "rdf:Seq")
+
+        # Creazione degli item
+        for episode in episodes["data"]:
+            # Riferimento nella sequenza
+            ET.SubElement(seq, "rdf:li", {
+                "rdf:resource": episode["episode_raw_url"]
+            })
+
+            # Item completo
+            item = ET.SubElement(rdf, "item", {
+                "rdf:about": episode["episode_raw_url"]
+            })
+
+            item_title = ET.SubElement(item, "title")
+            item_title.text = clean_text(episode["title"])
+
+            item_link = ET.SubElement(item, "link")
+            item_link.text = episode["episode_raw_url"]
+
+            if "description" in episode:
+                item_description = ET.SubElement(item, "description")
+                item_description.text = clean_text(episode["description"])
+
+            # Data di pubblicazione in formato Dublin Core
+            if "date" in episode:
+                dc_date = ET.SubElement(item, "dc:date")
+                try:
+                    pub_date = datetime.fromisoformat(episode["date"])
+                    dc_date.text = pub_date.strftime("%Y-%m-%dT%H:%M:%S%z")
+                except (ValueError, TypeError) as e:
+                    print(f"Errore nel parsing della data RDF: {e}")
+                    dc_date.text = datetime.now().strftime("%Y-%m-%dT%H:%M:%S%z")
+
+            # Enclosure per il file audio
+            enclosure = ET.SubElement(item, "enclosure", {
+                "rdf:resource": episode["episode_raw_url"],
+                "type": "audio/mpeg"
+            })
+
+        return ET.tostring(rdf, encoding="unicode", method="xml", xml_declaration=True)
+
+# Aggiungiamo l'istanza del generatore RDF
+rdf_generator = PodcastRDFGenerator()
 
 # --- API Endpoints ---
 
@@ -610,5 +754,40 @@ async def get_podcast_episodes_json(
                 "publish_date": episode.get("publish_date", "")
             } for episode in all_episodes["data"]]
         }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/podcast/{podcast_id}/rdf")
+async def get_podcast_rdf(
+    podcast_id: int = Path(...),
+    request: Request = None
+):
+    """Genera il feed RDF per un podcast specifico."""
+    try:
+        podcasts = await fetch_podcasts()
+        podcast_info = next((p for p in podcasts["data"] if p["id"] == podcast_id), None)
+        
+        if not podcast_info:
+            raise HTTPException(status_code=404, detail="Podcast non trovato")
+        
+        episodes = await fetch_all_episodes(podcast_id)
+        
+        podcast_data = {
+            "id": podcast_id,
+            "title": podcast_info["title"],
+            "description": podcast_info["description"],
+            "author": podcast_info["author"],
+            "image": podcast_info["image"]
+        }
+        
+        request_base_url = str(request.base_url).rstrip('/')
+        
+        rdf_feed = rdf_generator.generate_feed(podcast_data, episodes, request_base_url)
+        
+        return Response(
+            content=rdf_feed,
+            media_type="application/rdf+xml"
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
