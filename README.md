@@ -1,65 +1,157 @@
-# ilpostapi
+# Il Post Podcast API
 
-[![Build Status](link-to-build-badge)](link-to-build-pipeline) [![License](link-to-license-badge)](link-to-license)
+[![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/thekoma/ilpostapi/on_tag.yaml?style=flat-square)](https://github.com/thekoma/ilpostapi/actions)
+[![GitHub release (latest by date)](https://img.shields.io/github/v/release/thekoma/ilpostapi?style=flat-square)](https://github.com/thekoma/ilpostapi/releases)
+[![GitHub last commit](https://img.shields.io/github/last-commit/thekoma/ilpostapi?style=flat-square)](https://github.com/thekoma/ilpostapi/commits)
+[![Docker Image Version](https://img.shields.io/github/v/tag/thekoma/ilpostapi?label=docker%20tag&style=flat-square)](https://github.com/thekoma/ilpostapi/pkgs/container/ilpostapi)
+[![Container Registry](https://img.shields.io/badge/container-ghcr.io-blue?style=flat-square)](https://github.com/thekoma/ilpostapi/pkgs/container/ilpostapi)
 
-## Description
+Un'interfaccia web elegante per accedere ai podcast de Il Post.
 
-A simple and fast reverse proxy for the "Il Post" podcast API. This application provides easy access to the latest podcast episodes, allowing users to quickly find and listen to their favorite content.
+![Screenshot dell'interfaccia](images/image.png)
 
-## API Endpoints
+## Funzionalità
 
-This application mirrors the endpoints of the original "Il Post" podcast API, providing the same functionality with potentially improved performance. Please refer to the official "Il Post" API documentation for a complete list of endpoints and their usage.
+### 🎧 Interfaccia Web
+- Design moderno con temi Catppuccin (Latte, Frappé, Macchiato, Mocha)
+- Player audio integrato con controlli di navigazione
+- Visualizzazione dettagliata degli episodi con data, durata e descrizione
+- Sfondo dinamico basato sulla copertina del podcast
+- Ricerca fuzzy in tempo reale su titoli, descrizioni e autori
 
-**Note:** This application acts as a reverse proxy and does not introduce any new API endpoints.
+### 📅 Gestione Episodi
+- Visualizzazione ordinata per data di pubblicazione
+- Informazioni dettagliate sull'ultimo episodio (titolo, data e ora di rilascio)
+- Paginazione degli episodi con numero personalizzabile di elementi per pagina
+- Riproduzione diretta degli episodi con player integrato
+- Download diretto dei file audio
 
-## Credentials
+### 🔄 Feed RSS
+- Feed RSS compatibile con tutti i principali aggregatori
+- Metadati completi per ogni episodio
+- Supporto per iTunes/Apple Podcasts
+- URL persistenti per ogni episodio
 
-This application does not require any authentication or API keys.
+### ⚡ Performance
+- Caching intelligente delle richieste API (15 minuti)
+- Caricamento asincrono dei dati
+- Interfaccia reattiva e fluida
+- Ottimizzazione delle immagini e dei contenuti
 
-## Deployment with Skaffold
+### 🎨 Design
+- Font serif per i titoli (Crimson Pro)
+- Font sans-serif per il testo (Inter)
+- Icone Font Awesome per una migliore UX
+- Animazioni fluide e feedback visivo
+- Tema adattivo chiaro/scuro
 
-This section provides instructions on how to deploy the application using Skaffold.
+## Utilizzo
 
-**Prerequisites:**
+### 🚀 Deploy con Helm
 
-*   [Docker](https://www.docker.com/)
-*   [kubectl](https://kubernetes.io/docs/tasks/tools/)
-*   [Skaffold](https://skaffold.dev/)
+Prima di deployare l'applicazione, è necessario creare un secret con le credenziali de Il Post. Puoi farlo in due modi:
 
-**Steps:**
+1. Usando un file `secret.yaml`:
+```yaml
+# secret.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ilpostapi
+  labels:
+    group: ilpostapi
+stringData:
+  EMAIL: your-email@domain.com
+  PASSWORD: your-password
+```
 
-1.  Clone the repository:
+```bash
+kubectl apply -f secret.yaml
+```
 
-    ```bash
-    git clone https://github.com/your-username/ilpostapi.git
-    cd ilpostapi
-    ```
+2. O direttamente da linea di comando:
+```bash
+kubectl create secret generic ilpostapi \
+  --from-literal=EMAIL=your-email@domain.com \
+  --from-literal=PASSWORD=your-password \
+  --labels=group=ilpostapi
+```
 
-2.  Deploy the application:
+Dopo aver creato il secret, puoi procedere con l'installazione dell'applicazione utilizzando Helm con il chart onechart:
 
-    ```bash
-    skaffold run --default-repo=your-docker-registry
-    ```
+```bash
+helm repo add gimlet-io https://chart.gimlet.io
+helm repo update
 
-    **Note:** Replace `your-docker-registry` with the actual URL of your Docker registry.
+helm install ilpostapi gimlet-io/onechart \
+  --version 0.73.0 \
+  --set image.repository=ghcr.io/thekoma/ilpostapi \
+  --set image.tag=latest \
+  --set containerPort=5000 \
+  --set resources.limits.cpu=50m \
+  --set resources.limits.memory=100Mi \
+  --set resources.requests.cpu=20m \
+  --set resources.requests.memory=50Mi \
+  --set container.imagePullPolicy=Always \
+  --set secretName=ilpostapi
+```
 
-3.  Access the application:
+Per una configurazione più avanzata, puoi utilizzare un file `values.yaml`:
 
-    ```bash
-    # Get the service's external IP address
-    kubectl get service ilpostapi -o wide
+```yaml
+resources:
+  limits:
+    cpu: "50m"
+    memory: "100Mi"
+  requests:
+    cpu: "20m"
+    memory: "50Mi"
+containerPort: 5000
+container:
+  imagePullPolicy: Always
+imagePullSecrets:
+  - regcred
+image:
+  repository: ghcr.io/thekoma/ilpostapi
+  tag: latest
+secretName: ilpostapi
+ingresses:
+  - host: ilpostapi.yourdomain
+    tlsEnabled: true
+    tlsSecretName: ilpostapi-ingress-cloudflare-tls
+```
 
-    # Access the application
-    http://<EXTERNAL_IP>:<PORT>/<endpoint_from_ilpost_api>
-    ```
+### 🐳 Deploy con Docker Compose
 
-    **Note:** Replace `<EXTERNAL_IP>`, and `<PORT>` with the actual values. Replace `<endpoint_from_ilpost_api>` with the desired Il Post API endpoint.
+Per un deploy locale o di sviluppo, puoi utilizzare Docker Compose. Crea un file `docker-compose.yaml`:
 
-## Contributing
+```yaml
+version: '3.8'
+services:
+  ilpostapi:
+    image: ghcr.io/thekoma/ilpostapi:latest
+    ports:
+      - "5000:5000"
+    environment:
+      - TZ=Europe/Rome
+      - EMAIL=your-email@domain.com
+      - PASSWORD=your-password
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '500m'
+          memory: 500M
+        reservations:
+          cpus: '100m'
+          memory: 50M
+```
 
-Contributions are welcome! Please feel free to submit bug reports, feature requests, or pull requests.
+Per avviare l'applicazione:
 
-## License
+```bash
+docker-compose up -d
+```
 
-This project is licensed under the [License Name] License - see the [LICENSE](LICENSE) file for details.
+L'applicazione sarà disponibile all'indirizzo `http://localhost:5000`
 
