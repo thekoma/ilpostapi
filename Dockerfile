@@ -11,7 +11,7 @@ ENV PYTHONFAULTHANDLER=1 \
     CRYPTOGRAPHY_DONT_BUILD_RUST=1 \
     TZ='Europe/Rome'
 
-WORKDIR /usr/src/app
+WORKDIR /usr/app
 
 # Installiamo le dipendenze di sistema necessarie per Alpine
 RUN apk add --no-cache \
@@ -25,7 +25,10 @@ RUN apk add --no-cache \
     openssl-dev \
     cargo \
     make \
-    bind-tools
+    bind-tools \
+    sqlite
+
+RUN mkdir /data && chown nobody:nobody /data
 
 # Installiamo poetry e configuriamolo
 RUN pip3 install --no-cache-dir --upgrade pip && \
@@ -40,10 +43,20 @@ RUN poetry install --only main --no-interaction --no-ansi
 
 # Copiamo il resto del codice sorgente
 COPY src/ ./
+COPY entrypoint.sh ./
+COPY dev-tools/ ./dev-tools/
+# Rendiamo eseguibile lo script di entrypoint
+RUN chmod +x entrypoint.sh
+# Rendi scrivibile i file per l'utente nobody
+RUN  chown -R 1000:1000 /usr/app && chmod -R u+w /usr/app
 
-# Copiamo i file statici
-COPY src/static /app/src/static
+# Create user ilpoastapi with uid 1000 and gid 1000 using adduser, and add group ilpoastapi
+RUN  addgroup -g 1000 ilpoastapi && adduser -u 1000 -G ilpoastapi -s /bin/sh -D ilpoastapi && chown -R ilpoastapi:ilpoastapi /usr/app && chmod -R u+w /usr/app
 
 EXPOSE 5000
 
-CMD ["uvicorn", "main:app", "--proxy-headers", "--port", "5000", "--host", "0.0.0.0", "--forwarded-allow-ips", "*"]
+# Imposta l'utente non-root
+# USER nobody
+USER ilpoastapi
+
+ENTRYPOINT ["./entrypoint.sh"]

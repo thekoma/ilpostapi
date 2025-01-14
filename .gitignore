@@ -4,3 +4,5 @@ deploy/k8s/ingress.yaml
 .venv/**
 .venv/
 __pycache__
+deploy/k8s/overlays
+deploy/k8s/base/secret.yaml
