@@ -1,12 +1,16 @@
 import os
 import time
+import logging
 from functools import lru_cache
 from datetime import datetime, timedelta, timezone
 import xml.etree.ElementTree as ET
-import html  # Aggiungi questo import all'inizio del file
-import re  # Aggiungi questo import per la funzione re
+import html
+import re
+from pathlib import Path as FilePath
+from typing import Dict, Optional
+import asyncio
+import httpx
 
-import requests
 from difflib import get_close_matches
 from fastapi import FastAPI, HTTPException, Request, Depends
 from fastapi.responses import JSONResponse, Response
@@ -15,6 +19,49 @@ from dotenv import load_dotenv, find_dotenv
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
+from cachetools import TTLCache, cached
+from sqlalchemy.ext.asyncio import AsyncSession
+from contextlib import asynccontextmanager
+from sqlalchemy.sql import select
+
+from utils.logging import setup_logging, get_logger, LogConfig
+from utils.rate_limiter import rate_limiter, api_rate_limiter
+from database import get_db, init_db, AsyncSessionLocal, Podcast, Episode
+from database.operations import (
+    get_or_create_podcast,
+    update_podcast_check_time,
+    get_podcast_episodes,
+    save_episodes,
+)
+
+# Configurazione del logging
+setup_logging()
+logger = get_logger(__name__)
+
+# Configurazione del client HTTP
+http_client = httpx.Client(
+    timeout=30.0, verify=False
+)  # verify=False per gestire il punto extra nell'URL
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Gestisce il ciclo di vita dell'applicazione."""
+    logger.info("🚀 Inizializzazione dell'applicazione...")
+    try:
+        # Inizializza il database
+        logger.info("🗄️ Inizializzazione del database...")
+        await init_db()
+        logger.info("✅ Database inizializzato con successo")
+        yield
+    except Exception as e:
+        logger.error(f"❌ Errore durante l'inizializzazione: {str(e)}")
+        raise
+    finally:
+        logger.info("👋 Chiusura dell'applicazione...")
+        # Chiudi il client HTTP
+        http_client.close()
+
 
 # Load environment variables from .env file
 load_dotenv(find_dotenv())
@@ -26,6 +73,7 @@ PASSWORD = os.getenv("PASSWORD")
 
 # Raise an error if EMAIL is not found
 if not EMAIL or not PASSWORD:
+    logger.error("EMAIL and PASSWORD are required but not set properly")
     raise ValueError("EMAIL and PASSWORD are required but not set properly")
 
 # Base URLs for the external APIs
@@ -34,175 +82,501 @@ API_AUTH_LOGIN = "https://api-prod.ilpost.it./user/v1/auth/login"
 
 # Token caching configuration
 TOKEN_CACHE_TTL = 2 * 60 * 60  # 2 hours in seconds
-
-# Aggiungi queste variabili globali all'inizio del file
-EPISODE_CACHE = {}
+EPISODE_CACHE = {}  # Cache per gli episodi
+EPISODES_LIST_CACHE = {}  # Cache per le liste di episodi
+PODCASTS_CACHE = {}  # Cache per la lista dei podcast
 CACHE_TTL = 15 * 60  # 15 minuti in secondi
 
+# Token caching configuration
+token_cache = TTLCache(maxsize=1, ttl=TOKEN_CACHE_TTL)  # Cache per il token
+
 # --- FastAPI App ---
-app = FastAPI()
+app = FastAPI(lifespan=lifespan)
 
 # Configurazione template e file statici
 templates = Jinja2Templates(directory="templates")
 app.mount("/static", StaticFiles(directory="static", html=True), name="static")
 
 # Aggiungiamo le funzioni necessarie ai globals di Jinja2
-templates.env.globals.update({
-    'now': datetime.now,
-    'min': min,  # Aggiungiamo la funzione min
-    'max': max   # Aggiungiamo anche max per sicurezza
-})
+templates.env.globals.update(
+    {
+        "now": datetime.now,
+        "min": min,  # Aggiungiamo la funzione min
+        "max": max,  # Aggiungiamo anche max per sicurezza
+    }
+)
 
 # Dopo la creazione dell'istanza templates
 templates.env.globals.update(now=datetime.now)
 
+
 # Aggiungiamo la funzione helper a livello globale per poterla usare ovunque
 def clean_html_text(text: str) -> str:
+    """Pulisce il testo da tag HTML e caratteri speciali."""
     if not text:
         return ""
+
     # Prima decodifichiamo le entità HTML
     text = html.unescape(text)
+
     # Poi rimuoviamo eventuali tag HTML
-    text = re.sub(r'<[^>]+>', '', text)
+    text = re.sub(r"<[^>]+>", "", text)
+
+    # Sostituiamo alcuni caratteri speciali comuni
+    replacements = {
+        "'": "'",
+        "'": "'",
+        """: '"',
+        """: '"',
+        "–": "-",
+        "—": "-",
+        "…": "...",
+        "\n": " ",  # Sostituiamo i newline con spazi
+        "\r": " ",  # Sostituiamo i carriage return con spazi
+        "\t": " ",  # Sostituiamo i tab con spazi
+    }
+
+    for old, new in replacements.items():
+        text = text.replace(old, new)
+
     # Rimuoviamo spazi multipli
-    text = ' '.join(text.split())
+    text = " ".join(text.split())
+
     return text.strip()
 
+
 # Aggiungiamo la funzione ai globals di Jinja2
-templates.env.globals.update({
-    'now': datetime.now,
-    'min': min,
-    'max': max,
-    'clean_text': clean_html_text  # Aggiungiamo la funzione di pulizia
-})
+templates.env.globals.update(
+    {
+        "now": datetime.now,
+        "min": min,
+        "max": max,
+        "clean_text": clean_html_text,  # Aggiungiamo la funzione di pulizia
+    }
+)
+
 
 # Aggiungi questa funzione helper
 def format_duration(milliseconds: int) -> str:
     """Converte i millisecondi in formato MM:SS"""
     if not milliseconds:
         return "N/D"
-    
+
     total_seconds = milliseconds // 1000
     minutes = total_seconds // 60
     seconds = total_seconds % 60
     return f"{minutes}:{seconds:02d}"
 
+
 # Aggiungi la funzione ai globals di Jinja2
-templates.env.globals.update({
-    'now': datetime.now,
-    'min': min,
-    'max': max,
-    'clean_text': clean_html_text,
-    'format_duration': format_duration  # Aggiungi la nuova funzione
-})
+templates.env.globals.update(
+    {
+        "now": datetime.now,
+        "min": min,
+        "max": max,
+        "clean_text": clean_html_text,
+        "format_duration": format_duration,  # Aggiungi la nuova funzione
+    }
+)
+
+
+def format_date_main(isodate):
+    """Formatta giorno e mese della data."""
+    if not isodate:
+        return "N/D"
+    try:
+        date = datetime.fromisoformat(isodate.replace("Z", "+00:00"))
+        return f"{date.day:02d}/{date.month:02d}"
+    except (ValueError, AttributeError):
+        return "N/D"
+
+
+def format_date_year(isodate):
+    """Estrae l'anno dalla data."""
+    if not isodate:
+        return ""
+    try:
+        date = datetime.fromisoformat(isodate.replace("Z", "+00:00"))
+        return str(date.year)
+    except (ValueError, AttributeError):
+        return ""
+
+
+def format_date_time(isodate):
+    """Formatta l'ora della data."""
+    if not isodate:
+        return ""
+    try:
+        date = datetime.fromisoformat(isodate.replace("Z", "+00:00"))
+        return f"{date.hour:02d}:{date.minute:02d}"
+    except (ValueError, AttributeError):
+        return ""
+
+
+# Aggiungiamo le funzioni ai globals di Jinja2
+templates.env.globals.update(
+    {
+        "now": datetime.now,
+        "min": min,
+        "max": max,
+        "clean_text": clean_html_text,
+        "format_duration": format_duration,
+        "formatDateMain": format_date_main,  # Aggiunte le nuove funzioni
+        "formatDateYear": format_date_year,
+        "formatDateTime": format_date_time,
+    }
+)
 
 # --- Helper Functions ---
 
 BASE_URL = os.getenv("BASE_URL", "http://localhost:5000")
 
-@lru_cache(maxsize=1)  # Cache only the latest token
-def get_cached_token():
-    """Retrieves and caches the token with a TTL."""
-    token, expires_at = None, 0  # Initialize token and expiration time
 
+@cached(cache=token_cache)
+def get_cached_token():
+    """Ottiene un token di autenticazione (cached)."""
+    logger.info("🔄 Cache MISS - Richiesta nuovo token di autenticazione")
     try:
-        response = requests.post(
-            API_AUTH_LOGIN, data={"username": EMAIL, "password": PASSWORD}
-        )
+        response = http_client.post(API_AUTH_LOGIN, data={"username": EMAIL, "password": PASSWORD})
         response.raise_for_status()
         token_data = response.json()
         token = token_data["data"]["data"]["token"]
-        print(token)  # Consider logging this instead of printing
-        expires_in = token_data.get(
-            "expires_in", TOKEN_CACHE_TTL
-        )  # Use default TTL if not provided
-        expires_at = time.time() + expires_in
-    except requests.exceptions.RequestException as e:
-        raise HTTPException(status_code=500, detail=f"Error fetching token: {e}")
-
-    return token, expires_at
+        return token
+    except httpx.HTTPError as e:
+        logger.error(f"Errore durante l'autenticazione: {str(e)}")
+        logger.error(
+            f"Risposta API: {e.response.text if hasattr(e, 'response') else 'Nessuna risposta'}"
+        )
+        raise HTTPException(status_code=500, detail="Errore di autenticazione")
 
 
 async def get_token():
     """Provides the token, refreshing it if expired."""
-    token, expires_at = get_cached_token()
-    if time.time() > expires_at:
-        # Token expired, refresh it
-        get_cached_token.cache_clear()  # Clear the cache
-        token, expires_at = get_cached_token()  # Fetch a new token
-    return token
+    try:
+        return get_cached_token()
+    except Exception as e:
+        # Se c'è un errore, invalidiamo la cache e riproviamo
+        token_cache.clear()
+        return get_cached_token()
+
+
+async def make_api_request(url: str, headers: Optional[Dict] = None) -> Dict:
+    """Effettua una richiesta API con rate limiting."""
+    await api_rate_limiter.wait()
+    logger.info(f"🔄 Cache MISS - Chiamata API esterna: {url}")
+    try:
+        async with httpx.AsyncClient(timeout=30.0, verify=False) as client:
+            response = await client.get(url, headers=headers)
+            if response.status_code == 429:  # Too Many Requests
+                logger.warning("Rate limit raggiunto, attendo prima di riprovare")
+                await asyncio.sleep(60)  # Attendi 1 minuto
+                return await make_api_request(url, headers)
+            response.raise_for_status()
+            data = response.json()
+            # Verifica la struttura della risposta
+            if "data" not in data:
+                logger.error(f"Risposta API non valida: {data}")
+                raise HTTPException(status_code=500, detail="Risposta API non valida")
+            return data
+    except httpx.HTTPError as e:
+        logger.error(f"Errore durante la richiesta API: {str(e)}")
+        logger.error(f"URL: {url}")
+        logger.error(f"Headers: {headers}")
+        logger.error(
+            f"Risposta: {e.response.text if hasattr(e, 'response') else 'Nessuna risposta'}"
+        )
+        raise HTTPException(status_code=500, detail="Errore nella richiesta API")
 
 
 async def fetch_podcasts(page: int = 1, hits: int = 10000):
-    """Fetches podcast data from the external API."""
-    url = f"{PODCAST_API_BASE_URL}/?pg={page}&hits={hits}"
-    token = await get_token()  # Use await to get the token
+    """Recupera la lista dei podcast."""
+    cache_key = f"{page}_{hits}"
+    current_time = datetime.now().timestamp()
+
+    # Controlla se abbiamo una versione cached valida
+    if cache_key in PODCASTS_CACHE:
+        cached_data, cache_time = PODCASTS_CACHE[cache_key]
+        if current_time - cache_time < CACHE_TTL:
+            logger.info(f"🎯 Cache HIT - Lista podcast trovata in cache")
+            return cached_data
+
+    token = get_cached_token()
     headers = {"Apikey": "testapikey", "Token": token}
-    try:
-        response = requests.get(url, headers=headers)
-        response.raise_for_status()  # Raise an exception for bad status codes
-        return response.json()
-    except requests.exceptions.RequestException as e:
-        raise HTTPException(status_code=500, detail=f"Error fetching podcasts: {e}")
+    logger.info(f"📻 Recupero podcast dalla pagina {page} con {hits} risultati per pagina")
+    data = await make_api_request(f"{PODCAST_API_BASE_URL}/?pg={page}&hits={hits}", headers=headers)
 
+    # Salva nella cache
+    PODCASTS_CACHE[cache_key] = (data, current_time)
 
-""" By default get only the last episode """
+    return data
 
 
 async def fetch_episodes(podcast_id: int, page: int = 1, hits: int = 1):
-    """Fetches episode data for a specific podcast from the external API."""
-    if not isinstance(podcast_id, int):
-        raise HTTPException(
-            status_code=400, detail="Invalid podcast_id. Must be an integer."
-        )
-    url = f"{PODCAST_API_BASE_URL}/{podcast_id}/?pg={page}&hits={hits}"
-    print(url)  # Consider logging this instead of printing
-    try:
-        response = requests.get(url)
-        response.raise_for_status()  # Raise an exception for bad status codes
-        return response.json()
-    except requests.exceptions.RequestException as e:
-        raise HTTPException(status_code=500, detail=f"Error fetching episodes: {e}")
+    """Recupera gli episodi di un podcast."""
+    token = get_cached_token()
+    headers = {"Apikey": "testapikey", "Token": token}
+    logger.info(f"🎧 Recupero episodi per il podcast {podcast_id} dalla pagina {page}")
+    return await make_api_request(
+        f"{PODCAST_API_BASE_URL}/{podcast_id}/?pg={page}&hits={hits}", headers=headers
+    )
 
 
 async def fetch_all_episodes(podcast_id: int, batch_size: int = 10000):
-    """Fetches all episodes for a podcast using pagination."""
-    all_episodes = {"data": []}
+    """Recupera tutti gli episodi di un podcast."""
+    current_time = datetime.now().timestamp()
+
+    # Controlla se abbiamo una versione cached valida
+    if podcast_id in EPISODES_LIST_CACHE:
+        cached_data, cache_time = EPISODES_LIST_CACHE[podcast_id]
+        if current_time - cache_time < CACHE_TTL:
+            logger.info(f"🎯 Cache HIT - Lista episodi del podcast {podcast_id} trovata in cache")
+            return cached_data
+
+    logger.info(f"📥 Inizio recupero di tutti gli episodi per il podcast {podcast_id}")
     page = 1
-    
+    all_episodes = []
+
     while True:
-        try:
-            batch = await fetch_episodes(podcast_id, page=page, hits=batch_size)
-            
-            # Aggiungiamo gli episodi di questa pagina
-            all_episodes["data"].extend(batch["data"])
-            
-            # Controlliamo se ci sono altre pagine
-            total_hits = batch.get("total_hits", 0)
-            if len(all_episodes["data"]) >= total_hits:
-                break
-                
-            page += 1
-        except Exception as e:
-            print(f"Errore nel recupero della pagina {page}: {e}")
+        data = await fetch_episodes(podcast_id, page, batch_size)
+        episodes = data.get("data", [])
+        if not episodes:
             break
-    
-    return all_episodes
+
+        all_episodes.extend(episodes)
+        total = data.get("total", 0)
+        logger.info(
+            f"📊 Recuperati {len(all_episodes)}/{total} episodi per il podcast {podcast_id}"
+        )
+
+        if len(all_episodes) >= total:
+            break
+
+        page += 1
+
+    result = {"data": all_episodes}
+    # Salva nella cache
+    EPISODES_LIST_CACHE[podcast_id] = (result, current_time)
+
+    return result
 
 
 class PodcastRSSGenerator:
     def __init__(self):
         self.base_url = None  # Non impostiamo più un default
-        
+
     def generate_feed(self, podcast_data, episodes, request_base_url):
         # Funzione helper per pulire il testo
         def clean_text(text):
+            if not text:
+                return ""
             # Mappa di sostituzione per i caratteri speciali
             char_map = {
                 "'": "'",
                 "'": "'",
-                """: '"',
-                """: '"',
+                """: '"', """: '"',
+                "è": "è",
+                "à": "à",
+                "ì": "ì",
+                "ò": "ò",
+                "ù": "ù",
+                "é": "é",
+                "…": "...",
+                "–": "-",
+                "—": "-",
+                "&#8217;": "'",
+                "&#8211;": "-",
+                "&#8212;": "-",
+            }
+
+            for old, new in char_map.items():
+                text = text.replace(old, new)
+
+            return text.strip()
+
+        base_url = os.getenv("BASE_URL") or request_base_url.rstrip("/")
+
+        rss = ET.Element(
+            "rss",
+            {
+                "version": "2.0",
+                "xmlns:itunes": "http://www.itunes.com/dtds/podcast-1.0.dtd",
+                "xmlns:content": "http://purl.org/rss/1.0/modules/content/",
+                "xmlns:atom": "http://www.w3.org/2005/Atom",
+                "xmlns:googleplay": "http://www.google.com/schemas/play-podcasts/1.0",
+                "xmlns:podcast": "https://podcastindex.org/namespace/1.0",
+            },
+        )
+
+        channel = ET.SubElement(rss, "channel")
+
+        # Atom link (richiesto per la validazione)
+        atom_link = ET.SubElement(channel, "atom:link")
+        atom_link.set("href", f"{base_url}/podcast/{podcast_data['id']}/rss")
+        atom_link.set("rel", "self")
+        atom_link.set("type", "application/rss+xml")
+
+        # Informazioni base del podcast
+        title = ET.SubElement(channel, "title")
+        title.text = clean_text(podcast_data["title"])
+
+        link = ET.SubElement(channel, "link")
+        link.text = f"{base_url}/podcast/{podcast_data['id']}"
+
+        description = ET.SubElement(channel, "description")
+        description.text = clean_text(podcast_data.get("description", ""))
+
+        # Informazioni sull'autore in vari formati per massima compatibilità
+        author = clean_text(podcast_data.get("author", "Il Post"))
+
+        # 1. Tag author standard RSS
+        author_elem = ET.SubElement(channel, "author")
+        author_elem.text = f"{author} (podcast@ilpost.it)"
+
+        # 2. Tag managingEditor (per RSS 2.0)
+        managing_editor = ET.SubElement(channel, "managingEditor")
+        managing_editor.text = f"podcast@ilpost.it ({author})"
+
+        # 3. Tag iTunes author
+        itunes_author = ET.SubElement(channel, "itunes:author")
+        itunes_author.text = author
+
+        # 4. Tag googleplay:author
+        googleplay_author = ET.SubElement(channel, "googleplay:author")
+        googleplay_author.text = author
+
+        # Immagine del podcast (in vari formati)
+        image_url = podcast_data["image"]
+
+        # 1. Tag image standard RSS
+        image = ET.SubElement(channel, "image")
+        image_title = ET.SubElement(image, "title")
+        image_title.text = clean_text(podcast_data["title"])
+        image_url_elem = ET.SubElement(image, "url")
+        image_url_elem.text = image_url
+        image_link = ET.SubElement(image, "link")
+        image_link.text = f"{base_url}/podcast/{podcast_data['id']}"
+
+        # 2. Tag iTunes image
+        itunes_image = ET.SubElement(channel, "itunes:image")
+        itunes_image.set("href", image_url)
+
+        # 3. Tag googleplay:image
+        googleplay_image = ET.SubElement(channel, "googleplay:image")
+        googleplay_image.set("href", image_url)
+
+        # Altre informazioni richieste
+        language = ET.SubElement(channel, "language")
+        language.text = "it"
+
+        copyright_elem = ET.SubElement(channel, "copyright")
+        copyright_elem.text = f"© {datetime.now().year} {author}"
+
+        # Categoria iTunes e Google Play
+        itunes_category = ET.SubElement(channel, "itunes:category")
+        itunes_category.set("text", "News")
+
+        googleplay_category = ET.SubElement(channel, "googleplay:category")
+        googleplay_category.set("text", "News")
+
+        # Informazioni aggiuntive iTunes
+        itunes_explicit = ET.SubElement(channel, "itunes:explicit")
+        itunes_explicit.text = "false"
+
+        itunes_type = ET.SubElement(channel, "itunes:type")
+        itunes_type.text = "episodic"
+
+        itunes_owner = ET.SubElement(channel, "itunes:owner")
+        itunes_name = ET.SubElement(itunes_owner, "itunes:name")
+        itunes_name.text = author
+        itunes_email = ET.SubElement(itunes_owner, "itunes:email")
+        itunes_email.text = "podcast@ilpost.it"
+
+        # Aggiungiamo gli episodi
+        for episode in episodes["data"]:
+            item = ET.SubElement(channel, "item")
+
+            # GUID univoco (richiesto)
+            guid = ET.SubElement(item, "guid")
+            guid.text = episode["episode_raw_url"]
+            guid.set("isPermaLink", "true")
+
+            # Titolo e link
+            episode_title = ET.SubElement(item, "title")
+            episode_title.text = clean_text(episode["title"])
+
+            episode_link = ET.SubElement(item, "link")
+            episode_link.text = episode["episode_raw_url"]
+
+            # Descrizione in vari formati
+            description_text = clean_text(
+                episode.get("content_html") or episode.get("description", "")
+            )
+            if description_text:
+                item_description = ET.SubElement(item, "description")
+                item_description.text = description_text
+
+                itunes_summary = ET.SubElement(item, "itunes:summary")
+                itunes_summary.text = description_text
+
+                content_encoded = ET.SubElement(item, "content:encoded")
+                content_encoded.text = f"<![CDATA[{description_text}]]>"
+
+            # Autore dell'episodio
+            episode_author = ET.SubElement(item, "author")
+            episode_author.text = f"{author} (podcast@ilpost.it)"
+
+            itunes_author_episode = ET.SubElement(item, "itunes:author")
+            itunes_author_episode.text = author
+
+            # Data di pubblicazione
+            if "date" in episode:
+                pubDate = ET.SubElement(item, "pubDate")
+                try:
+                    pub_date = datetime.fromisoformat(episode["date"])
+                    pubDate.text = pub_date.strftime("%a, %d %b %Y %H:%M:%S %z")
+                except (ValueError, TypeError) as e:
+                    logger.error(f"Errore nel parsing della data: {e}")
+                    pubDate.text = datetime.now(tz=timezone(timedelta(hours=1))).strftime(
+                        "%a, %d %b %Y %H:%M:%S %z"
+                    )
+
+            # Durata dell'episodio
+            if "milliseconds" in episode:
+                duration_secs = episode["milliseconds"] // 1000
+                hours = duration_secs // 3600
+                minutes = (duration_secs % 3600) // 60
+                seconds = duration_secs % 60
+
+                itunes_duration = ET.SubElement(item, "itunes:duration")
+                if hours > 0:
+                    itunes_duration.text = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+                else:
+                    itunes_duration.text = f"{minutes:02d}:{seconds:02d}"
+
+            # Enclosure per il file audio
+            enclosure = ET.SubElement(item, "enclosure")
+            enclosure.set("url", episode["episode_raw_url"])
+            enclosure.set("type", "audio/mpeg")
+            enclosure.set("length", str(episode.get("size", "0")))
+
+        return ET.tostring(rss, encoding="unicode", method="xml", xml_declaration=True)
+
+
+# Aggiungiamo l'istanza del generatore RSS
+rss_generator = PodcastRSSGenerator()
+
+
+class PodcastRDFGenerator:
+    def __init__(self):
+        self.base_url = None
+
+    def generate_feed(self, podcast_data, episodes, request_base_url):
+        def clean_text(text):
+            # Riusiamo la stessa funzione di pulizia del testo
+            char_map = {
+                "'": "'",
+                "'": "'",
+                """: '"', """: '"',
                 "è": "e'",
                 "à": "a'",
                 "ì": "i'",
@@ -213,175 +587,32 @@ class PodcastRSSGenerator:
                 "–": "-",
                 "—": "-",
                 "&": "e",
-                "&#8217;": "'",  # apostrofo
-                "&#8211;": "-",  # en dash
-                "&#8212;": "-",  # em dash
-            }
-            
-            for old, new in char_map.items():
-                text = text.replace(old, new)
-            
-            # Rimuove eventuali caratteri HTML residui
-            text = text.replace("&amp;", "e")
-            return text
-
-        # Usiamo l'URL base dalla richiesta se non è configurato
-        base_url = os.getenv("BASE_URL") or request_base_url.rstrip('/')
-        
-        rss = ET.Element("rss", {
-            "version": "2.0",
-            "xmlns:itunes": "http://www.itunes.com/dtds/podcast-1.0.dtd",
-            "xmlns:content": "http://purl.org/rss/1.0/modules/content/",
-            "xmlns:atom": "http://www.w3.org/2005/Atom",
-            "xmlns:dc": "http://purl.org/dc/elements/1.1/"
-        })
-        
-        channel = ET.SubElement(rss, "channel")
-        
-        # Usiamo l'URL base dalla richiesta
-        atom_link = ET.SubElement(channel, "atom:link")
-        atom_link.set("href", f"{base_url}/podcast/{podcast_data['id']}/rss")
-        atom_link.set("rel", "self")
-        atom_link.set("type", "application/rss+xml")
-        
-        # Informazioni base del podcast
-        title = ET.SubElement(channel, "title")
-        title.text = podcast_data["title"]
-        
-        link = ET.SubElement(channel, "link")
-        link.text = f"{base_url}/podcast/{podcast_data['id']}"
-        
-        description = ET.SubElement(channel, "description")
-        description.text = podcast_data.get("description", "")
-        
-        # Informazioni iTunes richieste
-        language = ET.SubElement(channel, "language")
-        language.text = "it"
-        
-        # Categoria iTunes corretta
-        itunes_category = ET.SubElement(channel, "itunes:category")
-        itunes_category.set("text", "News & Politics")
-        
-        itunes_explicit = ET.SubElement(channel, "itunes:explicit")
-        itunes_explicit.text = "no"
-        
-        itunes_owner = ET.SubElement(channel, "itunes:owner")
-        itunes_email = ET.SubElement(itunes_owner, "itunes:email")
-        itunes_email.text = "podcast@ilpost.it"
-        
-        itunes_image = ET.SubElement(channel, "itunes:image")
-        itunes_image.set("href", podcast_data["image"])
-        
-        # Autore in vari formati per massima compatibilità
-        # 1. iTunes author (specifico per podcast)
-        itunes_author = ET.SubElement(channel, "itunes:author")
-        itunes_author.text = clean_text(podcast_data.get("author", "Il Post"))
-        
-        # 2. Dublin Core creator (per metadati standard)
-        dc_creator = ET.SubElement(channel, "dc:creator")
-        dc_creator.text = clean_text(podcast_data.get("author", "Il Post"))
-        
-        # 3. Webmaster con email (RFC 822 format)
-        webmaster = ET.SubElement(channel, "webMaster")
-        webmaster.text = "podcast@ilpost.it (Il Post)"
-        
-        # Copyright
-        copyright_elem = ET.SubElement(channel, "copyright")
-        copyright_elem.text = f"Copyright {datetime.now().year} Il Post"
-        
-        # Generator
-        generator = ET.SubElement(channel, "generator")
-        generator.text = "Il Post Podcast API"
-        
-        # TTL (15 minuti come il nostro cache)
-        ttl = ET.SubElement(channel, "ttl")
-        ttl.text = "15"
-        
-        # Last Build Date
-        last_build_date = ET.SubElement(channel, "lastBuildDate")
-        last_build_date.text = datetime.now(tz=timezone(timedelta(hours=1))).strftime("%a, %d %b %Y %H:%M:%S %z")
-        
-        # Aggiungiamo gli episodi
-        for episode in episodes["data"]:
-            item = ET.SubElement(channel, "item")
-            
-            episode_title = ET.SubElement(item, "title")
-            episode_title.text = clean_text(episode["title"])
-            
-            episode_link = ET.SubElement(item, "link")
-            episode_link.text = episode["episode_raw_url"]
-            
-            # Aggiungiamo guid (richiesto per la validazione)
-            guid = ET.SubElement(item, "guid")
-            guid.text = episode["episode_raw_url"]
-            guid.set("isPermaLink", "true")
-            
-            # Aggiungiamo enclosure con length
-            enclosure = ET.SubElement(item, "enclosure")
-            enclosure.set("url", episode["episode_raw_url"])
-            enclosure.set("type", "audio/mpeg")
-            enclosure.set("length", "0")  # Idealmente dovremmo ottenere la dimensione reale del file
-            
-            if "description" in episode:
-                item_description = ET.SubElement(item, "description")
-                item_description.text = clean_text(episode["description"])
-                
-                # Aggiungiamo anche content:encoded per il contenuto completo
-                content_encoded = ET.SubElement(item, "content:encoded")
-                content_encoded.text = f"<![CDATA[{episode['description']}]]>"
-            
-            # Aggiungiamo la data di pubblicazione
-            if "date" in episode:
-                pubDate = ET.SubElement(item, "pubDate")
-                try:
-                    # Formato della data in ingresso: "2024-01-19T06:00:00+01:00"
-                    pub_date = datetime.fromisoformat(episode["date"])
-                    pubDate.text = pub_date.strftime("%a, %d %b %Y %H:%M:%S %z")
-                except (ValueError, TypeError) as e:
-                    print(f"Errore nel parsing della data: {e}")
-                    pubDate.text = datetime.now().strftime("%a, %d %b %Y %H:%M:%S +0100")
-            
-            # Aggiungiamo dc:creator per l'autore dell'episodio
-            episode_author = ET.SubElement(item, "dc:creator")
-            episode_author.text = clean_text(podcast_data.get("author", "Il Post"))
-        
-        return ET.tostring(rss, encoding="unicode", method="xml", xml_declaration=True)
-
-# Aggiungiamo l'istanza del generatore RSS
-rss_generator = PodcastRSSGenerator()
-
-class PodcastRDFGenerator:
-    def __init__(self):
-        self.base_url = None
-
-    def generate_feed(self, podcast_data, episodes, request_base_url):
-        def clean_text(text):
-            # Riusiamo la stessa funzione di pulizia del testo
-            char_map = {
-                "'": "'", "'": "'", """: '"', """: '"',
-                "è": "e'", "à": "a'", "ì": "i'", "ò": "o'", "ù": "u'", "é": "e'",
-                "…": "...", "–": "-", "—": "-", "&": "e",
-                "&#8217;": "'", "&#8211;": "-", "&#8212;": "-",
+                "&#8217;": "'",
+                "&#8211;": "-",
+                "&#8212;": "-",
             }
             for old, new in char_map.items():
                 text = text.replace(old, new)
             return text.replace("&amp;", "e")
 
-        base_url = os.getenv("BASE_URL") or request_base_url.rstrip('/')
-        
+        base_url = os.getenv("BASE_URL") or request_base_url.rstrip("/")
+
         # Creazione dell'elemento root RDF
-        rdf = ET.Element("rdf:RDF", {
-            "xmlns:rdf": "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
-            "xmlns": "http://purl.org/rss/1.0/",
-            "xmlns:dc": "http://purl.org/dc/elements/1.1/",
-            "xmlns:content": "http://purl.org/rss/1.0/modules/content/",
-            "xmlns:itunes": "http://www.itunes.com/dtds/podcast-1.0.dtd"
-        })
+        rdf = ET.Element(
+            "rdf:RDF",
+            {
+                "xmlns:rdf": "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
+                "xmlns": "http://purl.org/rss/1.0/",
+                "xmlns:dc": "http://purl.org/dc/elements/1.1/",
+                "xmlns:content": "http://purl.org/rss/1.0/modules/content/",
+                "xmlns:itunes": "http://www.itunes.com/dtds/podcast-1.0.dtd",
+            },
+        )
 
         # Creazione del channel
-        channel = ET.SubElement(rdf, "channel", {
-            "rdf:about": f"{base_url}/podcast/{podcast_data['id']}/rdf"
-        })
+        channel = ET.SubElement(
+            rdf, "channel", {"rdf:about": f"{base_url}/podcast/{podcast_data['id']}/rdf"}
+        )
 
         # Metadati del canale
         title = ET.SubElement(channel, "title")
@@ -406,7 +637,7 @@ class PodcastRDFGenerator:
         author_name.text = clean_text(podcast_data.get("author", "Il Post"))
         author_uri = ET.SubElement(author, "uri")
         author_uri.text = "https://www.ilpost.it"
-        
+
         dc_creator = ET.SubElement(channel, "dc:creator")
         dc_creator.text = clean_text(podcast_data.get("author", "Il Post"))
 
@@ -417,14 +648,10 @@ class PodcastRDFGenerator:
         # Creazione degli item
         for episode in episodes["data"]:
             # Riferimento nella sequenza
-            ET.SubElement(seq, "rdf:li", {
-                "rdf:resource": episode["episode_raw_url"]
-            })
+            ET.SubElement(seq, "rdf:li", {"rdf:resource": episode["episode_raw_url"]})
 
             # Item completo
-            item = ET.SubElement(rdf, "item", {
-                "rdf:about": episode["episode_raw_url"]
-            })
+            item = ET.SubElement(rdf, "item", {"rdf:about": episode["episode_raw_url"]})
 
             item_title = ET.SubElement(item, "title")
             item_title.text = clean_text(episode["title"])
@@ -447,12 +674,14 @@ class PodcastRDFGenerator:
                     dc_date.text = datetime.now().strftime("%Y-%m-%dT%H:%M:%S%z")
 
             # Enclosure per il file audio
-            enclosure = ET.SubElement(item, "enclosure", {
-                "rdf:resource": episode["episode_raw_url"],
-                "type": "audio/mpeg"
-            })
+            enclosure = ET.SubElement(
+                item,
+                "enclosure",
+                {"rdf:resource": episode["episode_raw_url"], "type": "audio/mpeg"},
+            )
 
         return ET.tostring(rdf, encoding="unicode", method="xml", xml_declaration=True)
+
 
 # Aggiungiamo l'istanza del generatore RDF
 rdf_generator = PodcastRDFGenerator()
@@ -479,15 +708,11 @@ async def search_podcasts(query: str, request: Request):
     podcasts = await fetch_podcasts()
     base_url = request.base_url
     titles = [podcast["title"] for podcast in podcasts["data"]]
-    matches = get_close_matches(
-        query, titles, n=1, cutoff=0.2
-    )  # Adjust cutoff as needed
+    matches = get_close_matches(query, titles, n=1, cutoff=0.2)  # Adjust cutoff as needed
 
     if matches:
         matched_title = matches[0]
-        matching_podcast = next(
-            (p for p in podcasts["data"] if p["title"] == matched_title), None
-        )
+        matching_podcast = next((p for p in podcasts["data"] if p["title"] == matched_title), None)
 
         if matching_podcast:
             podcast_id = matching_podcast["id"]
@@ -500,9 +725,7 @@ async def search_podcasts(query: str, request: Request):
                 "podcast_api": f"{base_url}podcast/{podcast_id}/last",
             }
 
-    return JSONResponse(
-        content={"message": "No matching podcast found"}, status_code=404
-    )
+    return JSONResponse(content={"message": "No matching podcast found"}, status_code=404)
 
 
 @app.get(
@@ -551,123 +774,204 @@ async def healthcheck():
 
 @app.get("/podcast/{podcast_id}/rss")
 async def get_podcast_rss(
-    podcast_id: int = Path(...),
-    request: Request = None
+    podcast_id: int = Path(...), request: Request = None, db: AsyncSession = Depends(get_db)
 ):
     try:
+        # Recuperiamo le informazioni del podcast
         podcasts = await fetch_podcasts()
         podcast_info = next((p for p in podcasts["data"] if p["id"] == podcast_id), None)
-        
+
         if not podcast_info:
             raise HTTPException(status_code=404, detail="Podcast non trovato")
-        
-        # Usiamo fetch_all_episodes invece di fetch_episodes
-        episodes = await fetch_all_episodes(podcast_id)
-        
+
+        # Recuperiamo gli episodi dal database
+        episodes, needs_update = await get_podcast_episodes(db, podcast_id)
+
+        # Se dobbiamo aggiornare o non abbiamo episodi, li recuperiamo dall'API
+        if needs_update or not episodes:
+            await api_rate_limiter.wait()
+            api_episodes = await fetch_all_episodes(podcast_id)
+
+            # Otteniamo o creiamo il podcast nel database
+            db_podcast = await get_or_create_podcast(db, str(podcast_id), api_episodes["data"][0])
+            if not db_podcast:
+                raise HTTPException(
+                    status_code=404, detail="Impossibile creare o recuperare il podcast"
+                )
+
+            # Salviamo gli episodi nel database
+            await save_episodes(db, db_podcast, api_episodes["data"])
+            await update_podcast_check_time(db, db_podcast)
+
+            # Rileggiamo gli episodi dal database
+            episodes, _ = await get_podcast_episodes(db, podcast_id)
+
+        # Verifichiamo e aggiorniamo le descrizioni mancanti usando fetch_episode_details
+        episodes_to_update = [ep for ep in episodes if not ep.description_verified]
+        if episodes_to_update:
+            total_episodes = len(episodes_to_update)
+            logger.info(
+                f"Aggiornamento descrizioni per il podcast '{podcast_info['title']}' ({len(episodes_to_update)}/{len(episodes)} episodi da aggiornare)"
+            )
+            for idx, episode in enumerate(episodes_to_update, 1):
+                try:
+                    await api_rate_limiter.wait()
+                    logger.info(
+                        f"[{podcast_info['title']}] Recupero descrizione episodio {idx}/{total_episodes}: {episode.title}"
+                    )
+                    episode_details = await fetch_episode_details(
+                        podcast_id, int(episode.ilpost_id), db
+                    )
+                    if episode_details and "data" in episode_details:
+                        episode_data = episode_details["data"]
+                        episode.description = episode_data.get(
+                            "content_html", ""
+                        ) or episode_data.get("description", "")
+                        episode.description_verified = True
+                        await db.commit()
+                except Exception as e:
+                    logger.error(
+                        f"[{podcast_info['title']}] Errore nell'aggiornamento della descrizione per episodio {idx}/{total_episodes}: {str(e)}"
+                    )
+                    continue
+
+        # Prepariamo i dati per il feed RSS
+        episodes_data = {"data": []}
+        for episode in episodes:
+            episode_data = {
+                "id": episode.id,
+                "title": episode.title,
+                "description": episode.description,
+                "content_html": episode.description,
+                "episode_raw_url": episode.audio_url,
+                "date": episode.publication_date.isoformat() if episode.publication_date else None,
+                "milliseconds": episode.duration * 1000 if episode.duration else None,
+            }
+            episodes_data["data"].append(episode_data)
+
+        # Creiamo l'oggetto podcast
         podcast_data = {
             "id": podcast_id,
             "title": podcast_info["title"],
             "description": podcast_info["description"],
             "author": podcast_info["author"],
-            "image": podcast_info["image"]
+            "image": podcast_info["image"],
         }
-        
+
         # Otteniamo l'URL base dalla richiesta
-        request_base_url = str(request.base_url).rstrip('/')
-        
-        rss_feed = rss_generator.generate_feed(podcast_data, episodes, request_base_url)
-        
-        return Response(
-            content=rss_feed,
-            media_type="application/rss+xml"
-        )
+        request_base_url = str(request.base_url).rstrip("/")
+
+        # Generiamo il feed RSS
+        rss_feed = rss_generator.generate_feed(podcast_data, episodes_data, request_base_url)
+
+        return Response(content=rss_feed, media_type="application/rss+xml")
     except Exception as e:
+        logger.error(f"Errore nella generazione del feed RSS: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
-async def get_last_episode_date(podcast_id: int) -> str:
-    """Recupera la data dell'ultimo episodio con caching."""
-    current_time = datetime.now().timestamp()
-    
-    # Controlla se abbiamo una versione cached valida
-    if podcast_id in EPISODE_CACHE:
-        cached_data, cache_time = EPISODE_CACHE[podcast_id]
-        if current_time - cache_time < CACHE_TTL:
-            return cached_data
-    
-    # Se non c'è cache valida, recupera i dati
-    last_episode = await fetch_episodes(podcast_id, page=1, hits=1)
-    last_episode_date = None
-    if last_episode and last_episode.get('data') and len(last_episode['data']) > 0:
-        last_episode_date = last_episode['data'][0].get('date')
-    
-    # Salva nella cache
-    EPISODE_CACHE[podcast_id] = (last_episode_date, current_time)
-    
-    return last_episode_date
-
-
-async def get_last_episode_info(podcast_id: int) -> tuple:
+async def get_last_episode_info(podcast_id: int, db: AsyncSession = None) -> tuple:
     """Recupera le informazioni dell'ultimo episodio con caching."""
     current_time = datetime.now().timestamp()
-    
+
     # Controlla se abbiamo una versione cached valida
     if podcast_id in EPISODE_CACHE:
         cached_data, cache_time = EPISODE_CACHE[podcast_id]
         if current_time - cache_time < CACHE_TTL:
             return cached_data
-    
-    # Se non c'è cache valida, recupera i dati
+
+    # Se non c'è cache valida, prima controlliamo nel database
+    if db:
+        episodes, needs_update = await get_podcast_episodes(db, podcast_id)
+        if episodes and not needs_update:
+            # Ordiniamo per data di pubblicazione (più recenti prima)
+            episodes.sort(key=lambda x: x.publication_date or datetime.min, reverse=True)
+            if episodes:
+                latest = episodes[0]
+                cached_info = (
+                    latest.publication_date.isoformat() if latest.publication_date else None,
+                    latest.title,
+                    latest.duration * 1000 if latest.duration else None,
+                )
+                EPISODE_CACHE[podcast_id] = (cached_info, current_time)
+                return cached_info
+
+    # Se non troviamo nel database o serve un aggiornamento, chiamiamo l'API
     last_episode = await fetch_episodes(podcast_id, page=1, hits=1)
     last_episode_date = None
     last_episode_title = None
-    if last_episode and last_episode.get('data') and len(last_episode['data']) > 0:
-        last_episode_date = last_episode['data'][0].get('date')
-        last_episode_title = last_episode['data'][0].get('title')
-    
+    last_episode_duration = None
+
+    if last_episode and last_episode.get("data") and len(last_episode["data"]) > 0:
+        episode = last_episode["data"][0]
+        last_episode_date = episode.get("date")
+        last_episode_title = episode.get("title")
+        last_episode_duration = episode.get("milliseconds")
+
     # Salva nella cache
-    cached_info = (last_episode_date, last_episode_title)
+    cached_info = (last_episode_date, last_episode_title, last_episode_duration)
     EPISODE_CACHE[podcast_id] = (cached_info, current_time)
-    
+
     return cached_info
+
+
+async def get_last_episode_date(podcast_id: int) -> str:
+    """Recupera la data dell'ultimo episodio."""
+    last_episode_date, _, _ = await get_last_episode_info(podcast_id)
+    return last_episode_date
 
 
 @app.get("/", response_class=HTMLResponse)
 @app.get("/podcasts/directory", response_class=HTMLResponse)
-async def podcast_directory(request: Request):
+async def podcast_directory(request: Request, db: AsyncSession = Depends(get_db)):
     """Mostra la directory di tutti i podcast come pagina principale."""
+    # Recuperiamo la lista dei podcast con una sola chiamata
     podcasts = await fetch_podcasts(page=1, hits=100)
-    
+    logger.debug(f"Recuperati {len(podcasts['data'])} podcast")
+
     # Prepariamo i dati per il template, includendo l'ultimo episodio
     podcast_list = []
-    for podcast in podcasts['data']:
-        last_episode_date, last_episode_title = await get_last_episode_info(podcast['id'])
-        
-        podcast_list.append({
-            'id': podcast['id'],
-            'title': clean_html_text(podcast['title']),
-            'image': podcast['image'],
-            'description': clean_html_text(podcast['description']),
-            'author': clean_html_text(podcast['author']),
-            'rss_url': f"/podcast/{podcast['id']}/rss",
-            'slug': podcast['slug'],
-            'last_episode_date': last_episode_date,
-            'last_episode_title': clean_html_text(last_episode_title) if last_episode_title else None
-        })
-    
+    for podcast in podcasts["data"]:
+        logger.debug(f"Elaborazione podcast {podcast['id']}: {podcast['title']}")
+
+        # Recuperiamo le informazioni dell'ultimo episodio in modo ottimizzato
+        last_episode_date, last_episode_title, last_episode_duration = await get_last_episode_info(
+            podcast["id"], db
+        )
+        logger.debug(
+            f"Informazioni ultimo episodio: data={last_episode_date}, titolo={last_episode_title}, durata={last_episode_duration}"
+        )
+
+        podcast_data = {
+            "id": podcast["id"],
+            "title": clean_html_text(podcast["title"]),
+            "image": podcast["image"],
+            "description": clean_html_text(podcast["description"]),
+            "author": clean_html_text(podcast["author"]),
+            "rss_url": f"/podcast/{podcast['id']}/rss",
+            "slug": podcast["slug"],
+            "last_episode_date": last_episode_date,
+            "last_episode_title": (
+                clean_html_text(last_episode_title) if last_episode_title else None
+            ),
+            "last_episode_duration": (
+                format_duration(last_episode_duration) if last_episode_duration else "N/D"
+            ),
+        }
+        logger.debug(f"Dati preparati per il template: {podcast_data}")
+        podcast_list.append(podcast_data)
+
     # Ordiniamo i podcast per data dell'ultimo episodio
     podcast_list.sort(
-        key=lambda x: x['last_episode_date'] if x['last_episode_date'] else '1970-01-01T00:00:00+00:00',
-        reverse=True
+        key=lambda x: (
+            x["last_episode_date"] if x["last_episode_date"] else "1970-01-01T00:00:00+00:00"
+        ),
+        reverse=True,
     )
-    
+
     return templates.TemplateResponse(
         "podcast_directory.html",
-        {
-            "request": request,
-            "podcasts": podcast_list,
-            "year": datetime.now().year
-        }
+        {"request": request, "podcasts": podcast_list, "year": datetime.now().year},
     )
 
 
@@ -676,118 +980,449 @@ async def podcast_episodes(
     podcast_id: int = Path(...),
     request: Request = None,
     page: int = 1,
-    per_page: int = 20  # Numero di episodi per pagina
+    per_page: int = 20,
+    db: AsyncSession = Depends(get_db),
 ):
-    """Mostra gli episodi di un podcast con paginazione."""
     try:
+        # Prima recuperiamo le informazioni del podcast
         podcasts = await fetch_podcasts()
         podcast_info = next((p for p in podcasts["data"] if p["id"] == podcast_id), None)
-        
+
         if not podcast_info:
             raise HTTPException(status_code=404, detail="Podcast non trovato")
-        
-        # Recuperiamo tutti gli episodi
-        all_episodes = await fetch_all_episodes(podcast_id)
-        
-        # Calcoliamo la paginazione
-        total_episodes = len(all_episodes["data"])
-        total_pages = (total_episodes + per_page - 1) // per_page
-        
-        # Assicuriamoci che la pagina richiesta sia valida
-        page = max(1, min(page, total_pages))
-        
-        # Selezioniamo gli episodi per la pagina corrente
+
+        # Creiamo l'oggetto podcast per il template
+        podcast = {
+            "id": podcast_info["id"],
+            "title": clean_html_text(podcast_info["title"]),
+            "image": podcast_info["image"],
+            "description": clean_html_text(podcast_info["description"]),
+            "author": clean_html_text(podcast_info["author"]),
+            "rss_url": f"/podcast/{podcast_info['id']}/rss",
+            "slug": podcast_info["slug"],
+        }
+
+        # Controlliamo nel database
+        episodes, needs_update = await get_podcast_episodes(db, podcast_id)
+
+        if needs_update:
+            # Se dobbiamo aggiornare, aspettiamo il rate limiter
+            await api_rate_limiter.wait()
+            # Prendiamo i dati freschi dall'API
+            response = await fetch_episodes(
+                podcast_id, hits=10000
+            )  # Prendiamo tutti gli episodi disponibili
+            podcast_data = response.get("data", [])
+
+            if not podcast_data:
+                raise HTTPException(
+                    status_code=404, detail="Nessun episodio trovato per questo podcast"
+                )
+
+            # Otteniamo prima il podcast esistente o ne creiamo uno nuovo
+            db_podcast = await get_or_create_podcast(db, str(podcast_id), podcast_data[0])
+            if not db_podcast:
+                raise HTTPException(
+                    status_code=404, detail="Impossibile creare o recuperare il podcast"
+                )
+
+            # Salviamo nel database
+            await save_episodes(db, db_podcast, podcast_data)
+            await update_podcast_check_time(db, db_podcast)
+
+            # Rileggiamo gli episodi dal database
+            episodes, _ = await get_podcast_episodes(db, db_podcast.id)
+
+        # Ordiniamo gli episodi per data di pubblicazione (più recenti prima)
+        episodes.sort(key=lambda x: x.publication_date or datetime.min, reverse=True)
+
+        # Calcoliamo i parametri di paginazione
+        total_items = len(episodes)
+        total_pages = (total_items + per_page - 1) // per_page
+        has_next = page < total_pages
+        has_prev = page > 1
+
+        # Generiamo la lista delle pagine da mostrare
+        max_visible_pages = 5
+        if total_pages <= max_visible_pages:
+            pages = list(range(1, total_pages + 1))
+        else:
+            # Mostriamo sempre la prima e l'ultima pagina
+            pages = [1]
+            # Aggiungiamo le pagine intorno a quella corrente
+            start_page = max(2, page - 1)
+            end_page = min(total_pages - 1, page + 1)
+            if start_page > 2:
+                pages.append("...")
+            pages.extend(range(start_page, end_page + 1))
+            if end_page < total_pages - 1:
+                pages.append("...")
+            pages.append(total_pages)
+
+        if not episodes:
+            # Creiamo un oggetto pagination vuoto
+            pagination = {
+                "current_page": page,
+                "per_page": per_page,
+                "total_items": 0,
+                "total_episodes": 0,  # Alias per il template
+                "total_pages": 0,
+                "has_next": False,
+                "has_prev": False,
+                "pages": [],
+            }
+
+            return templates.TemplateResponse(
+                "podcast_episodes.html",
+                {
+                    "request": request,
+                    "podcast": podcast,
+                    "episodes": [],
+                    "pagination": pagination,
+                    "podcast_id": podcast_id,
+                },
+            )
+
+        # Paginazione
         start_idx = (page - 1) * per_page
         end_idx = start_idx + per_page
-        current_episodes = all_episodes["data"][start_idx:end_idx]
-        
-        # Puliamo i dati del podcast
-        podcast_info = {
-            **podcast_info,
-            'title': clean_html_text(podcast_info['title']),
-            'description': clean_html_text(podcast_info.get('description', '')),
-            'author': clean_html_text(podcast_info.get('author', ''))
+        paginated_episodes = episodes[start_idx:end_idx]
+
+        # Creiamo l'oggetto pagination
+        pagination = {
+            "current_page": page,
+            "per_page": per_page,
+            "total_items": total_items,
+            "total_episodes": total_items,  # Alias per il template
+            "total_pages": total_pages,
+            "has_next": has_next,
+            "has_prev": has_prev,
+            "pages": pages,
         }
-        
-        # Puliamo i titoli degli episodi
-        current_episodes = [{
-            **episode,
-            'title': clean_html_text(episode['title']),
-            'description': clean_html_text(episode.get('description', ''))
-        } for episode in all_episodes["data"][start_idx:end_idx]]
-        
+
+        # Serializziamo gli episodi per il template
+        serialized_episodes = []
+        for episode in paginated_episodes:
+            episode_dict = {
+                "id": episode.id,
+                "ilpost_id": episode.ilpost_id,
+                "title": clean_html_text(episode.title),
+                "description": clean_html_text(episode.description),
+                "content_html": episode.description,  # Manteniamo anche la versione HTML per chi la vuole usare
+                "episode_raw_url": episode.audio_url,  # Alias per il template
+                "audio_url": episode.audio_url,
+                "date": episode.publication_date.isoformat() if episode.publication_date else None,
+                "milliseconds": (
+                    episode.duration * 1000 if episode.duration else None
+                ),  # Alias per il template
+                "duration": format_duration(episode.duration * 1000 if episode.duration else None),
+            }
+            serialized_episodes.append(episode_dict)
+
         return templates.TemplateResponse(
             "podcast_episodes.html",
             {
                 "request": request,
-                "podcast": podcast_info,
-                "episodes": current_episodes,
-                "year": datetime.now().year,
-                "pagination": {
-                    "current_page": page,
-                    "total_pages": total_pages,
-                    "per_page": per_page,
-                    "total_episodes": total_episodes,
-                    "has_prev": page > 1,
-                    "has_next": page < total_pages,
-                    "pages": range(max(1, page - 2), min(total_pages + 1, page + 3))
-                }
-            }
+                "podcast": podcast,
+                "episodes": serialized_episodes,
+                "pagination": pagination,
+                "podcast_id": podcast_id,
+            },
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error fetching episodes for podcast {podcast_id}: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "message": f"Error fetching episodes for podcast {podcast_id}",
+                "error": str(e),
+            },
+        )
+
+
+def serialize_episode(episode):
+    """Serializza un episodio del database in un dizionario."""
+    return {
+        "id": episode.id,
+        "ilpost_id": episode.ilpost_id,
+        "title": episode.title,
+        "description": episode.description,
+        "audio_url": episode.audio_url,
+        "date": episode.publication_date.isoformat() if episode.publication_date else None,
+        "duration": (
+            episode.duration * 1000 if episode.duration else None
+        ),  # Convertiamo in millisecondi
+    }
 
 
 @app.get("/api/podcast/{podcast_id}/episodes")
 async def get_podcast_episodes_json(
-    podcast_id: int = Path(...),
-    per_page: int = 100
+    podcast_id: int = Path(...), per_page: int = 100, db: AsyncSession = Depends(get_db)
 ):
-    """Restituisce gli episodi di un podcast in formato JSON."""
     try:
-        all_episodes = await fetch_all_episodes(podcast_id)
-        return {
-            "episodes": [{
-                "title": clean_html_text(episode["title"]),
-                "description": clean_html_text(episode.get("description", "")),
-                "episode_raw_url": episode["episode_raw_url"],
-                "publish_date": episode.get("publish_date", "")
-            } for episode in all_episodes["data"]]
-        }
+        episodes, needs_update = await get_podcast_episodes(db, podcast_id)
+
+        if needs_update:
+            await api_rate_limiter.wait()
+            response = await fetch_episodes(
+                podcast_id, hits=10000
+            )  # Prendiamo tutti gli episodi disponibili
+            podcast_data = response.get("data", [])
+
+            if not podcast_data:
+                raise HTTPException(
+                    status_code=404, detail="Nessun episodio trovato per questo podcast"
+                )
+
+            # Otteniamo prima il podcast esistente o ne creiamo uno nuovo
+            podcast = await get_or_create_podcast(db, str(podcast_id), podcast_data[0])
+            if not podcast:
+                raise HTTPException(
+                    status_code=404, detail="Impossibile creare o recuperare il podcast"
+                )
+
+            # Ora possiamo salvare gli episodi
+            await save_episodes(db, podcast, podcast_data)
+            await update_podcast_check_time(db, podcast)
+
+            # Rileggiamo gli episodi dal database
+            episodes, _ = await get_podcast_episodes(db, podcast.id)
+
+        if not episodes:
+            return {"data": []}
+
+        # Ordiniamo gli episodi per data di pubblicazione (più recenti prima)
+        episodes.sort(key=lambda x: x.publication_date or datetime.min, reverse=True)
+
+        # Serializziamo gli episodi
+        serialized_episodes = [serialize_episode(episode) for episode in episodes[:per_page]]
+
+        return {"data": serialized_episodes}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error fetching episodes for podcast {podcast_id}: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "message": f"Error fetching episodes for podcast {podcast_id}",
+                "error": str(e),
+            },
+        )
 
 
 @app.get("/podcast/{podcast_id}/rdf")
-async def get_podcast_rdf(
-    podcast_id: int = Path(...),
-    request: Request = None
-):
+async def get_podcast_rdf(podcast_id: int = Path(...), request: Request = None):
     """Genera il feed RDF per un podcast specifico."""
     try:
         podcasts = await fetch_podcasts()
         podcast_info = next((p for p in podcasts["data"] if p["id"] == podcast_id), None)
-        
+
         if not podcast_info:
             raise HTTPException(status_code=404, detail="Podcast non trovato")
-        
+
         episodes = await fetch_all_episodes(podcast_id)
-        
+
         podcast_data = {
             "id": podcast_id,
             "title": podcast_info["title"],
             "description": podcast_info["description"],
             "author": podcast_info["author"],
-            "image": podcast_info["image"]
+            "image": podcast_info["image"],
         }
-        
-        request_base_url = str(request.base_url).rstrip('/')
-        
+
+        request_base_url = str(request.base_url).rstrip("/")
+
         rdf_feed = rdf_generator.generate_feed(podcast_data, episodes, request_base_url)
-        
-        return Response(
-            content=rdf_feed,
-            media_type="application/rdf+xml"
-        )
+
+        return Response(content=rdf_feed, media_type="application/rdf+xml")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/clear-cache")
+async def clear_cache():
+    """Pulisce la cache degli episodi e dei token."""
+    episode_cache.clear()
+    token_cache.clear()
+    return {"message": "Cache pulita con successo"}
+
+
+async def fetch_episode_details(podcast_id: int, episode_id: int, db: AsyncSession = None):
+    """Recupera i dettagli di un singolo episodio."""
+    try:
+        # Se abbiamo una sessione DB, prima cerchiamo lì
+        if db:
+            stmt = select(Episode).where(Episode.ilpost_id == str(episode_id))
+            result = await db.execute(stmt)
+            episode = result.scalar_one_or_none()
+            if episode and episode.description_verified:
+                logger.info(f"🎯 Cache HIT - Dettagli episodio {episode_id} trovati nel database")
+                return {
+                    "data": {
+                        "id": episode.id,
+                        "title": episode.title,
+                        "description": episode.description,
+                        "content_html": episode.description,
+                        "episode_raw_url": episode.audio_url,
+                        "date": (
+                            episode.publication_date.isoformat()
+                            if episode.publication_date
+                            else None
+                        ),
+                        "milliseconds": episode.duration * 1000 if episode.duration else None,
+                    }
+                }
+
+        # Se non lo troviamo nel DB o la descrizione non è verificata, lo recuperiamo dall'API
+        url = f"{PODCAST_API_BASE_URL}/{podcast_id}/{episode_id}/"
+        logger.warning(f"📝 Recupero dettagli episodio {episode_id} del podcast {podcast_id}")
+
+        token = await get_token()
+        headers = {"Apikey": "testapikey", "Token": token}
+        await api_rate_limiter.wait()
+
+        try:
+            data = await make_api_request(url, headers)
+            logger.debug(f"✨ Dettagli episodio recuperati: {data}")
+
+            # Se abbiamo una sessione DB, salviamo i dati
+            if db and data and "data" in data:
+                episode_data = data["data"]
+                description = episode_data.get("content_html", "") or episode_data.get(
+                    "summary", ""
+                )
+
+                if not episode:
+                    episode = Episode(
+                        ilpost_id=str(episode_id),
+                        podcast_id=podcast_id,
+                        title=episode_data.get("title", ""),
+                        description=description,
+                        description_verified=True,
+                        audio_url=episode_data.get("episode_raw_url", ""),
+                        publication_date=(
+                            datetime.fromisoformat(
+                                episode_data.get("date", "").replace("Z", "+00:00")
+                            )
+                            if episode_data.get("date")
+                            else None
+                        ),
+                        duration=(
+                            episode_data.get("milliseconds", 0) // 1000
+                            if episode_data.get("milliseconds")
+                            else None
+                        ),
+                    )
+                    db.add(episode)
+                    logger.debug(f"✅ Creato nuovo episodio nel database: {episode_id}")
+                else:
+                    episode.title = episode_data.get("title", episode.title)
+                    episode.description = description
+                    episode.description_verified = True
+                    episode.audio_url = episode_data.get("episode_raw_url", episode.audio_url)
+                    if episode_data.get("date"):
+                        episode.publication_date = datetime.fromisoformat(
+                            episode_data["date"].replace("Z", "+00:00")
+                        )
+                    if episode_data.get("milliseconds"):
+                        episode.duration = episode_data["milliseconds"] // 1000
+                    logger.debug(f"🔄 Aggiornato episodio nel database: {episode_id}")
+
+                await db.commit()
+
+            return data
+
+        except requests.exceptions.HTTPError as e:
+            if e.response.status_code == 404:
+                logger.warning(f"⚠️ Endpoint dettagli episodio non disponibile: {url}")
+                if db and episode:
+                    episode.description_verified = True
+                    await db.commit()
+                return None
+            raise
+
+    except Exception as e:
+        logger.error(f"❌ Errore nel recupero dettagli episodio {episode_id}: {str(e)}")
+        if db and episode:
+            episode.description_verified = True
+            await db.commit()
+        return None
+
+
+@app.get("/api/podcast/{podcast_id}/episode/{episode_id}/description")
+async def get_episode_description(
+    podcast_id: int = Path(...), episode_id: str = Path(...), db: AsyncSession = Depends(get_db)
+):
+    """Recupera la descrizione di un singolo episodio."""
+    try:
+        # Prima cerchiamo nel database
+        stmt = select(Episode).where(Episode.ilpost_id == episode_id)
+        result = await db.execute(stmt)
+        episode = result.scalar_one_or_none()
+
+        if episode and episode.description:
+            return {
+                "description": clean_html_text(episode.description),
+                "content_html": episode.description,
+            }
+
+        # Se non lo troviamo nel database o non ha descrizione, lo recuperiamo dall'API
+        await api_rate_limiter.wait()
+        if episode_details := await fetch_episode_details(podcast_id, int(episode_id), db=db):
+            # Estraiamo i dati secondo lo schema API_PODCAST_EPISODE
+            episode_data = episode_details.get("data", {})
+            description = episode_data.get("content_html", "") or episode_data.get("summary", "")
+
+            return {"description": clean_html_text(description), "content_html": description}
+
+        # Se non abbiamo trovato nulla, restituiamo una descrizione vuota
+        return {"description": "", "content_html": ""}
+
+    except Exception as e:
+        logger.error(
+            f"Errore nel recupero descrizione episodio {episode_id}: {str(e)}", exc_info=True
+        )
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "message": f"Errore nel recupero descrizione episodio {episode_id}",
+                "error": str(e),
+            },
+        )
+
+
+@app.post("/api/podcast/{podcast_id}/episode/{episode_id}/refresh")
+async def refresh_episode(
+    podcast_id: int = Path(...), episode_id: str = Path(...), db: AsyncSession = Depends(get_db)
+):
+    """Forza il refresh delle informazioni di un episodio dal backend."""
+    try:
+        # Invalidiamo la cache per questo episodio
+        stmt = select(Episode).where(Episode.ilpost_id == episode_id)
+        result = await db.execute(stmt)
+        episode = result.scalar_one_or_none()
+
+        if episode:
+            # Forziamo il refresh impostando description_verified a False
+            episode.description_verified = False
+            await db.commit()
+
+        # Recuperiamo i nuovi dati dall'API
+        await api_rate_limiter.wait()
+        episode_details = await fetch_episode_details(podcast_id, int(episode_id), db=db)
+
+        if not episode_details:
+            raise HTTPException(status_code=404, detail="Episodio non trovato")
+
+        return {"message": "Episodio aggiornato con successo"}
+
+    except Exception as e:
+        logger.error(
+            f"Errore nell'aggiornamento dell'episodio {episode_id}: {str(e)}", exc_info=True
+        )
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "message": f"Errore nell'aggiornamento dell'episodio {episode_id}",
+                "error": str(e),
+            },
+        )

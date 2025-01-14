@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.pytest_cache/
+
+# Virtual Environment
+.env
+.venv
+env/
+venv/
+ENV/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Logs
+*.log
+
+# Local development
+.git/
+.gitignore
+README.md
+tests/
+docs/
+
+# Docker
+Dockerfile
+.dockerignore
+
+# Kubernetes
+deploy/
+skaffold.yaml
+
+# Database
+*.db
+*.sqlite3

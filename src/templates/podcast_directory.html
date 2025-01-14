@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Il Post - Directory Podcast</title>
+    <title>DIOCANE - Il Post - Directory Podcast</title>
     <link rel="icon" type="image/svg+xml" href="{{ url_for('static', path='/images/favicon.svg') }}">
     <link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:ital,wght@0,400;0,600;1,400&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', path='/css/styles.css') }}">
@@ -53,10 +53,22 @@
                         <p class="last-episode-date">
                             <i class="fas fa-calendar"></i> {{ podcast.last_episode_date.split('+')[0].split('T')[0] }}
                             <i class="fas fa-clock"></i> {{ podcast.last_episode_date.split('+')[0].split('T')[1] }}
+                            {% if podcast.last_episode_duration %}
+                            <span class="last-episode-duration">
+                                <i class="fas fa-hourglass-half"></i> {{ podcast.last_episode_duration }}
+                            </span>
+                            {% endif %}
                         </p>
+                        {% if podcast.last_episode_title %}
                         <p class="last-episode-title">
                             <i class="fas fa-podcast"></i> {{ podcast.last_episode_title }}
                         </p>
+                        {% endif %}
+                        {% if podcast.last_episode_description %}
+                        <div class="last-episode-description">
+                            {{ podcast.last_episode_description }}
+                        </div>
+                        {% endif %}
                     </div>
                     {% endif %}
                     <p class="description">{{ podcast.description }}</p>
@@ -150,4 +162,4 @@
     <script src="{{ url_for('static', path='/js/player.js') }}"></script>
     <script src="{{ url_for('static', path='/js/search.js') }}"></script>
 </body>
-</html> 
+</html>
