@@ -1,0 +1,89 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ilpostapi
+  labels:
+    app: ilpostapi
+    group: ilpostapi
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ilpostapi
+  template:
+    metadata:
+      labels:
+        app: ilpostapi
+    spec:
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: Always
+      containers:
+      - name: ilpostapi
+        image: ilpostapi
+        # Do not set ad readonly! It needs to be RW!
+        # securityContext:
+        #   allowPrivilegeEscalation: false
+        #   readOnlyRootFilesystem: false
+        #   capabilities:
+        #     drop:
+        #     - ALL
+        ports:
+        - containerPort: 5000
+        volumeMounts:
+        - name: data
+          mountPath: /data
+        - name: tmp
+          mountPath: /tmp
+        resources:
+          requests:
+            cpu: 100m
+            memory: 200Mi
+          limits:
+            cpu: 500m
+            memory: 500Mi
+        # livenessProbe:
+        #   httpGet:
+        #     path: /healthcheck
+        #     port: 5000
+        #   initialDelaySeconds: 15
+        #   periodSeconds: 20
+        #   timeoutSeconds: 3
+        #   failureThreshold: 3
+        # readinessProbe:
+        #   httpGet:
+        #     path: /healthcheck
+        #     port: 5000
+        #   initialDelaySeconds: 5
+        #   periodSeconds: 10
+        #   timeoutSeconds: 2
+        #   successThreshold: 1
+        #   failureThreshold: 3
+        # startupProbe:
+        #   httpGet:
+        #     path: /healthcheck
+        #     port: 5000
+        #   initialDelaySeconds: 5
+        #   periodSeconds: 5
+        #   timeoutSeconds: 2
+        #   failureThreshold: 30
+        envFrom:
+        - configMapRef:
+            name: ilpostapi-config
+        env:
+        - name: EMAIL
+          valueFrom:
+            secretKeyRef:
+              name: ilpostapi-credentials
+              key: EMAIL
+        - name: PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: ilpostapi-credentials
+              key: PASSWORD
+      volumes:
+      - name: data
+      - name: tmp
+        emptyDir: {}

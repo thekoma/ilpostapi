@@ -961,4 +961,48 @@ body.podcast-episodes-page::after {
     color: var(--primary-color);
     width: 1em;
     text-align: center;
-} 
+}
+
+.last-episode-info {
+    background: rgba(0, 0, 0, 0.03);
+    padding: 0.75rem;
+    border-radius: 8px;
+    margin: 1rem 0;
+}
+
+.last-episode-date, .last-episode-title {
+    font-size: 0.85rem;
+    color: var(--text-color);
+    opacity: 0.9;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.last-episode-title {
+    margin-top: 0.5rem;
+    font-weight: 500;
+}
+
+.last-episode-date i, .last-episode-title i {
+    color: var(--primary-color);
+    width: 16px;
+    text-align: center;
+}
+
+.last-episode-duration {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    background: var(--primary-color);
+    color: white;
+    padding: 0.25rem 0.5rem;
+    border-radius: 12px;
+    font-size: 0.8rem;
+    margin-left: auto;
+}
+
+.last-episode-duration i {
+    color: white !important;
+}

@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ilpostapi-config
+data:
+  LOG_LEVEL: "INFO"
+  LOG_FORMAT: "JSON"
+  DB_DIR: "/data"

@@ -5,19 +5,37 @@ metadata:
 build:
   artifacts:
     - image: ilpostapi
+      docker:
+        dockerfile: Dockerfile
       sync:
         infer:
-          - src/**
-  local:
-    useBuildkit: true
-manifests:
-  kustomize:
-    paths:
-    - "deploy/k8s"
-portForward:
+           - 'src/database/__init__.py'
+           - 'src/**/*.py'
+           - 'src/**/*.html'
+           - 'src/**/*.css'
+           - 'src/**/*.js'
+           - 'src/**/*.json'
+           - 'src/**/*.txt'
+           - 'src/**/*.yaml'
+           - 'src/**/*.yml'
+profiles:
+- name: dev
+  manifests:
+    kustomize:
+      paths:
+      - deploy/k8s/overlays/dev
+  deploy:
+    kubectl: {}
+  portForward:
   - resourceType: deployment
-    resourceName: ilpostapi
+    resourceName: dev-ilpostapi
     port: 5000
     address: 0.0.0.0
-deploy:
-  kubectl: {}
+    localPort: 5000
+- name: prod
+  manifests:
+    kustomize:
+      paths:
+      - deploy/k8s/overlays/prod
+  deploy:
+    kubectl: {}
