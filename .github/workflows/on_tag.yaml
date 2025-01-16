@@ -62,11 +62,30 @@ jobs:
     runs-on: ubuntu-latest
     permissions: write-all
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate Release Notes
+        uses: actions/github-script@v7
+        id: release-notes
+        with:
+          script: |
+            const tag = context.payload.client_payload?.tag_name || context.ref.replace('refs/tags/', '');
+            const response = await github.rest.repos.generateReleaseNotes({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag_name: tag,
+            });
+            return response.data.body;
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
-          name: Release ${{ github.ref_name }}
-          body: Automated release for tag ${{ github.ref_name }}
+          tag_name: ${{ github.event.client_payload.tag_name || github.ref_name }}
+          name: Release ${{ github.event.client_payload.tag_name || github.ref_name }}
+          body: ${{ steps.release-notes.outputs.result }}
+          generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
