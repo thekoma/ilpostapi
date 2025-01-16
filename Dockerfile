@@ -1,4 +1,4 @@
-FROM python:3.13-alpine3.19
+FROM python:3.13-slim
 
 # Set environment variables
 ENV PYTHONFAULTHANDLER=1 \
@@ -8,28 +8,18 @@ ENV PYTHONFAULTHANDLER=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=on \
     PIP_DEFAULT_TIMEOUT=100 \
     POETRY_VERSION=1.7.1 \
-    # Usa i wheel pre-compilati quando disponibili
     PIP_PREFER_BINARY=1 \
-    # Evita di compilare cryptography da sorgente
-    CRYPTOGRAPHY_DONT_BUILD_RUST=1 \
     TZ='Europe/Rome'
 
 WORKDIR /usr/app
 
-# Installiamo solo le dipendenze necessarie
-# Nota: gcc e python3-dev sono ancora necessari per alcuni pacchetti
-RUN apk add --no-cache \
+# Installiamo solo i pacchetti essenziali
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    dnsutils \
+    sqlite3 \
     curl \
-    bash \
-    gcc \
-    musl-dev \
-    python3-dev \
-    libffi-dev \
-    openssl-dev \
-    bind-tools \
-    sqlite \
-    # Aggiungiamo rust solo durante la build
-    cargo
+    && rm -rf /var/lib/apt/lists/*
 
 # Installiamo poetry
 RUN pip3 install --no-cache-dir --upgrade pip && \
@@ -39,9 +29,8 @@ RUN pip3 install --no-cache-dir --upgrade pip && \
 # Copiamo solo i file necessari per l'installazione delle dipendenze
 COPY poetry.lock pyproject.toml ./
 
-# Installiamo le dipendenze e rimuoviamo i tool di build
-RUN poetry install --only main --no-interaction --no-ansi && \
-    apk del gcc python3-dev musl-dev libffi-dev openssl-dev cargo
+# Installiamo le dipendenze
+RUN poetry install --only main --no-interaction --no-ansi
 
 # Copiamo il resto del codice
 COPY src/ ./
@@ -50,8 +39,8 @@ COPY dev-tools/ ./dev-tools/
 
 # Setup permissions
 RUN chmod +x entrypoint.sh && \
-    addgroup -g 1000 ilpoastapi && \
-    adduser -u 1000 -G ilpoastapi -s /bin/sh -D ilpoastapi && \
+    groupadd -g 1000 ilpoastapi && \
+    useradd -u 1000 -g ilpoastapi -s /bin/bash ilpoastapi && \
     chown -R ilpoastapi:ilpoastapi /usr/app && \
     chmod -R u+w /usr/app
 
