@@ -19,7 +19,7 @@ alembic = "^1.11.1"
 python-json-logger = "^3.0.0"
 python-multipart = "^0.0.20"
 aiofiles = "^24.0.0"
-httpx = "^0.25.2"
+httpx = "^0.28.0"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
