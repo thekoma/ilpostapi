@@ -1,6 +1,6 @@
-FROM python:alpine3.21
+FROM python:3.13-alpine3.19
 
-# Impostiamo prima tutte le variabili d'ambiente
+# Set environment variables
 ENV PYTHONFAULTHANDLER=1 \
     PYTHONUNBUFFERED=1 \
     PYTHONHASHSEED=random \
@@ -8,29 +8,30 @@ ENV PYTHONFAULTHANDLER=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=on \
     PIP_DEFAULT_TIMEOUT=100 \
     POETRY_VERSION=1.7.1 \
+    # Usa i wheel pre-compilati quando disponibili
+    PIP_PREFER_BINARY=1 \
+    # Evita di compilare cryptography da sorgente
     CRYPTOGRAPHY_DONT_BUILD_RUST=1 \
     TZ='Europe/Rome'
 
 WORKDIR /usr/app
 
-# Installiamo le dipendenze di sistema necessarie per Alpine
+# Installiamo solo le dipendenze necessarie
+# Nota: gcc e python3-dev sono ancora necessari per alcuni pacchetti
 RUN apk add --no-cache \
     curl \
     bash \
     gcc \
-    g++ \
     musl-dev \
     python3-dev \
     libffi-dev \
     openssl-dev \
-    cargo \
-    make \
     bind-tools \
-    sqlite
+    sqlite \
+    # Aggiungiamo rust solo durante la build
+    cargo
 
-RUN mkdir /data && chown nobody:nobody /data
-
-# Installiamo poetry e configuriamolo
+# Installiamo poetry
 RUN pip3 install --no-cache-dir --upgrade pip && \
     pip3 install --no-cache-dir poetry && \
     poetry config virtualenvs.create false
@@ -38,25 +39,24 @@ RUN pip3 install --no-cache-dir --upgrade pip && \
 # Copiamo solo i file necessari per l'installazione delle dipendenze
 COPY poetry.lock pyproject.toml ./
 
-# Installiamo le dipendenze
-RUN poetry install --only main --no-interaction --no-ansi
+# Installiamo le dipendenze e rimuoviamo i tool di build
+RUN poetry install --only main --no-interaction --no-ansi && \
+    apk del gcc python3-dev musl-dev libffi-dev openssl-dev cargo
 
-# Copiamo il resto del codice sorgente
+# Copiamo il resto del codice
 COPY src/ ./
 COPY entrypoint.sh ./
 COPY dev-tools/ ./dev-tools/
-# Rendiamo eseguibile lo script di entrypoint
-RUN chmod +x entrypoint.sh
-# Rendi scrivibile i file per l'utente nobody
-RUN  chown -R 1000:1000 /usr/app && chmod -R u+w /usr/app
 
-# Create user ilpoastapi with uid 1000 and gid 1000 using adduser, and add group ilpoastapi
-RUN  addgroup -g 1000 ilpoastapi && adduser -u 1000 -G ilpoastapi -s /bin/sh -D ilpoastapi && chown -R ilpoastapi:ilpoastapi /usr/app && chmod -R u+w /usr/app
+# Setup permissions
+RUN chmod +x entrypoint.sh && \
+    addgroup -g 1000 ilpoastapi && \
+    adduser -u 1000 -G ilpoastapi -s /bin/sh -D ilpoastapi && \
+    chown -R ilpoastapi:ilpoastapi /usr/app && \
+    chmod -R u+w /usr/app
 
 EXPOSE 5000
 
-# Imposta l'utente non-root
-# USER nobody
 USER ilpoastapi
 
 ENTRYPOINT ["./entrypoint.sh"]
