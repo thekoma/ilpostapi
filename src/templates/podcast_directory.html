@@ -3,14 +3,21 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="service-worker-path" content="{{ url_for('static', path='/js/player-sw.js') }}">
     <title>Il Post - Directory Podcast</title>
     <link rel="icon" type="image/svg+xml" href="{{ url_for('static', path='/images/favicon.svg') }}">
     <link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:ital,wght@0,400;0,600;1,400&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', path='/css/styles.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', path='/css/loading.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', path='/css/player.css') }}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css">
 </head>
 <body>
+    <div class="loading-container">
+        <div class="loading-bar"></div>
+        <div class="loading-text">Caricamento podcast in corso...</div>
+    </div>
+
     <div class="theme-switcher">
         <select id="theme-select" onchange="changeTheme(this.value)">
             <option value="latte">Catppuccin Latte</option>
@@ -116,6 +123,7 @@
                 <div class="now-playing">
                     <span id="now-playing-title"></span>
                 </div>
+                <div id="episode-description-player" class="episode-description-player"></div>
             </div>
         </div>
     </div>
@@ -126,13 +134,112 @@
         </div>
     </footer>
 
+    <script src="{{ url_for('static', path='/js/loading.js') }}"></script>
+    <script src="{{ url_for('static', path='/js/player.js') }}"></script>
+    <script src="{{ url_for('static', path='/js/search.js') }}"></script>
+
     <script>
-        // Carica il tema salvato o usa il default
         document.addEventListener('DOMContentLoaded', function() {
+            const loadingContainer = document.querySelector('.loading-container');
+            const loadingBar = document.querySelector('.loading-bar');
+            const loadingText = document.querySelector('.loading-text');
+            const podcastGrid = document.querySelector('.podcast-grid');
+
+            // Nascondi la griglia dei podcast durante il caricamento
+            podcastGrid.style.opacity = '0';
+            podcastGrid.style.transition = 'opacity 0.5s ease-in-out';
+
+            // Se i dati necessitano di aggiornamento, lo facciamo in background
+            if ({{ needs_update|tojson }}) {
+                updatePodcastsInBackground();
+            } else {
+                // Altrimenti mostriamo subito i dati con una breve animazione
+                showLoadingAnimation();
+            }
+
+            // Carica il tema salvato o usa il default
             const savedTheme = getCookie('theme') || 'macchiato';
             document.documentElement.setAttribute('data-theme', savedTheme);
             document.getElementById('theme-select').value = savedTheme;
         });
+
+        async function updatePodcastsInBackground() {
+            const loadingContainer = document.querySelector('.loading-container');
+            const loadingBar = document.querySelector('.loading-bar');
+            const loadingText = document.querySelector('.loading-text');
+
+            // Mostra la barra di caricamento
+            loadingContainer.classList.remove('loading-hidden');
+            loadingText.classList.remove('hidden');
+            loadingContainer.style.display = 'block';
+            loadingBar.style.width = '0%';
+            loadingText.textContent = 'Aggiornamento podcast in corso...';
+
+            try {
+                // Avvia l'animazione di caricamento
+                setTimeout(() => {
+                    loadingBar.style.width = '90%';
+                }, 50);
+
+                const response = await fetch('/api/podcasts/update', {
+                    method: 'POST'
+                });
+
+                if (!response.ok) throw new Error('Errore nell\'aggiornamento dei podcast');
+
+                const data = await response.json();
+
+                // Aggiorna la barra al 100%
+                loadingBar.style.width = '100%';
+
+                // Aggiorna la pagina dopo un breve ritardo
+                setTimeout(() => {
+                    window.location.reload();
+                }, 500);
+
+            } catch (error) {
+                console.error('Errore:', error);
+                loadingText.textContent = 'Errore nell\'aggiornamento dei podcast';
+                loadingText.style.color = 'var(--red)';
+
+                // Mostra comunque i dati cached dopo un errore
+                showLoadingAnimation();
+            }
+        }
+
+        function showLoadingAnimation() {
+            const loadingContainer = document.querySelector('.loading-container');
+            const loadingBar = document.querySelector('.loading-bar');
+            const loadingText = document.querySelector('.loading-text');
+            const podcastGrid = document.querySelector('.podcast-grid');
+
+            // Mostra la barra di caricamento
+            loadingContainer.classList.remove('loading-hidden');
+            loadingText.classList.remove('hidden');
+            loadingContainer.style.display = 'block';
+            loadingBar.style.width = '0%';
+
+            // Simula il progresso del caricamento
+            setTimeout(() => {
+                loadingBar.style.width = '90%';
+
+                // Dopo un breve ritardo, completa il caricamento
+                setTimeout(() => {
+                    loadingBar.style.width = '100%';
+
+                    // Mostra la griglia con fade-in
+                    podcastGrid.style.opacity = '1';
+
+                    // Nascondi la barra di caricamento
+                    setTimeout(() => {
+                        loadingText.classList.add('hidden');
+                        setTimeout(() => {
+                            loadingContainer.classList.add('loading-hidden');
+                        }, 500);
+                    }, 200);
+                }, 500);
+            }, 50);
+        }
 
         function changeTheme(theme) {
             document.documentElement.setAttribute('data-theme', theme);
@@ -159,9 +266,5 @@
             button.querySelector('i').classList.toggle('fa-chevron-down');
         }
     </script>
-
-    <script src="{{ url_for('static', path='/js/loading.js') }}"></script>
-    <script src="{{ url_for('static', path='/js/player.js') }}"></script>
-    <script src="{{ url_for('static', path='/js/search.js') }}"></script>
 </body>
 </html>

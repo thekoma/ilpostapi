@@ -3,18 +3,39 @@
     top: 0;
     left: 0;
     width: 100%;
-    height: 3px;
+    height: 4px;
     background-color: var(--surface0);
     z-index: 1000;
     overflow: hidden;
+    transition: opacity 0.3s ease-out;
 }
 
 .loading-bar {
     height: 100%;
     width: 0;
     background-color: var(--accent);
-    transition: width 0.3s ease-out;
+    transition: width 0.5s ease-out;
     position: relative;
+}
+
+.loading-text {
+    position: absolute;
+    top: 4px;
+    left: 0;
+    width: 100%;
+    text-align: center;
+    padding: 4px;
+    background-color: var(--surface0);
+    color: var(--accent);
+    font-size: 0.8em;
+    transform: translateY(0);
+    transition: transform 0.3s ease-out, opacity 0.3s ease-out;
+    opacity: 1;
+}
+
+.loading-text.hidden {
+    transform: translateY(-100%);
+    opacity: 0;
 }
 
 .loading-bar::after {
@@ -22,12 +43,12 @@
     position: absolute;
     top: 0;
     left: 0;
-    width: 100%;
+    width: 200%;
     height: 100%;
     background: linear-gradient(
         90deg,
         transparent,
-        rgba(255, 255, 255, 0.3),
+        var(--accent-light, rgba(255, 255, 255, 0.2)),
         transparent
     );
     animation: loading-shimmer 1.5s infinite;
@@ -35,16 +56,15 @@
 
 @keyframes loading-shimmer {
     0% {
-        transform: translateX(-100%);
+        transform: translateX(-50%);
     }
     100% {
-        transform: translateX(100%);
+        transform: translateX(0%);
     }
 }
 
 .loading-hidden {
     opacity: 0;
-    transition: opacity 0.3s ease-out;
 }
 
 .content-loading {
