@@ -3,6 +3,5 @@
   "extends": [
     "config:recommended"
   ],
-  "automerge": true,
-  "automergeType": "pr"
+  "automerge": true
 }
