@@ -24,6 +24,14 @@ jobs:
         run: |
           TAG=${{ github.event.client_payload.tag_name || github.ref_name }}
           echo "tag_without_v=${TAG#v}" >> $GITHUB_OUTPUT
+          # Extract major version (2022)
+          MAJOR=$(echo ${TAG#v} | cut -d'.' -f1)
+          echo "major=${MAJOR}" >> $GITHUB_OUTPUT
+          echo "major_with_v=v${MAJOR}" >> $GITHUB_OUTPUT
+          # Extract major.minor version (2022.01)
+          MAJOR_MINOR=$(echo ${TAG#v} | cut -d'.' -f1,2)
+          echo "major_minor=${MAJOR_MINOR}" >> $GITHUB_OUTPUT
+          echo "major_minor_with_v=v${MAJOR_MINOR}" >> $GITHUB_OUTPUT
 
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
@@ -46,6 +54,12 @@ jobs:
             type=raw,value=${{ github.event.client_payload.tag_name || github.ref_name }}
             # Set specific version without v prefix
             type=raw,value=${{ steps.tag_name.outputs.tag_without_v }}
+            # Add major version tags (with and without v)
+            type=raw,value=${{ steps.tag_name.outputs.major_with_v }}
+            type=raw,value=${{ steps.tag_name.outputs.major }}
+            # Add major.minor version tags (with and without v)
+            type=raw,value=${{ steps.tag_name.outputs.major_minor_with_v }}
+            type=raw,value=${{ steps.tag_name.outputs.major_minor }}
             # Add version tags
             type=ref,event=tag
             type=semver,pattern={{version}}
