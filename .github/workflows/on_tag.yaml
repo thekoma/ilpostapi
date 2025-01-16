@@ -83,7 +83,7 @@ jobs:
           context: . # Or specify a subdirectory if needed
           file: ./Dockerfile # Path to your Dockerfile
           push: true
-          platforms: linux/amd64,linux/arm64/v8,linux/arm/v7
+          platforms: linux/amd64,linux/arm64/v8
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
