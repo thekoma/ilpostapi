@@ -4,16 +4,5 @@
     "config:recommended"
   ],
   "automerge": true,
-  "automergeType": "pr",
-  "platformAutomerge": true,
-  "packageRules": [
-    {
-      "matchUpdateTypes": ["minor", "patch", "pin", "digest"],
-      "automerge": true
-    },
-    {
-      "matchDepTypes": ["devDependencies"],
-      "automerge": true
-    }
-  ]
+  "automergeType": "pr"
 }
