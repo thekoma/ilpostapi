@@ -34,10 +34,12 @@ jobs:
             ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}
           # generate Docker tags based on the following events/attributes
           tags: |
-            # Set latest tag for default branch
+            # Set latest tag only for default branch
             type=raw,value=latest,enable={{is_default_branch}}
-            # Set specific version from dispatch or git tag
+            # Set specific version from dispatch or git tag (with v prefix)
             type=raw,value=${{ github.event.client_payload.tag_name || github.ref_name }}
+            # Set specific version without v prefix
+            type=regex,pattern=v(.*),group=1
             # Add version tags
             type=ref,event=tag
             type=semver,pattern={{version}}
