@@ -1,0 +1,1099 @@
+{
+  "swagger": "2.0",
+  "basePath": "/podcast/v1",
+  "paths": {
+    "/bff/hp": {
+      "post": {
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "operationId": "post_bff_hp",
+        "tags": [
+          "bff"
+        ]
+      },
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Success",
+            "schema": {
+              "$ref": "#/definitions/API_BFF_HP"
+            }
+          }
+        },
+        "operationId": "bff_hp",
+        "tags": [
+          "bff"
+        ]
+      }
+    },
+    "/bff/podcast/{podcast}/": {
+      "parameters": [
+        {
+          "name": "podcast",
+          "in": "path",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Success",
+            "schema": {
+              "$ref": "#/definitions/API_BFF_PODCAST"
+            }
+          }
+        },
+        "operationId": "bff_podcast",
+        "tags": [
+          "bff"
+        ]
+      }
+    },
+    "/bff/podcast/{podcast}/{episode}/": {
+      "parameters": [
+        {
+          "name": "podcast",
+          "in": "path",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "name": "episode",
+          "in": "path",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Success",
+            "schema": {
+              "$ref": "#/definitions/API_BFF_EPISODE"
+            }
+          }
+        },
+        "operationId": "bff_episode",
+        "tags": [
+          "bff"
+        ]
+      }
+    },
+    "/ms/podcast": {
+      "post": {
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "operationId": "post_podcast",
+        "tags": [
+          "ms"
+        ]
+      },
+      "put": {
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "operationId": "put_podcast",
+        "tags": [
+          "ms"
+        ]
+      },
+      "delete": {
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "operationId": "delete_podcast",
+        "tags": [
+          "ms"
+        ]
+      },
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "operationId": "get_podcast",
+        "tags": [
+          "ms"
+        ]
+      }
+    },
+    "/podcast/": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Success",
+            "schema": {
+              "$ref": "#/definitions/API_PODCAST"
+            }
+          }
+        },
+        "operationId": "podcast",
+        "parameters": [
+          {
+            "name": "pg",
+            "in": "query",
+            "type": "integer",
+            "minimum": 0,
+            "exclusiveMinimum": true,
+            "description": "pagina",
+            "default": 1
+          },
+          {
+            "name": "hits",
+            "in": "query",
+            "type": "integer",
+            "minimum": 0,
+            "exclusiveMinimum": true,
+            "description": "numero risultati per pagina",
+            "default": 20
+          }
+        ],
+        "tags": [
+          "podcast"
+        ]
+      }
+    },
+    "/podcast/check": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Success",
+            "schema": {
+              "$ref": "#/definitions/API_PODCAST_EPISODE"
+            }
+          }
+        },
+        "operationId": "check",
+        "parameters": [
+          {
+            "name": "episode",
+            "in": "query",
+            "type": "string",
+            "required": true,
+            "description": "il-senza-glutine-e-meglio-solo-per-alcune-persone"
+          }
+        ],
+        "tags": [
+          "podcast"
+        ]
+      }
+    },
+    "/podcast/episodes": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Success",
+            "schema": {
+              "$ref": "#/definitions/API_PODCAST_EPISODE"
+            }
+          }
+        },
+        "operationId": "episodes",
+        "parameters": [
+          {
+            "name": "ids",
+            "in": "query",
+            "type": "string",
+            "required": true,
+            "description": "Comma-separated list of integers, e.g., \"1,2,3\""
+          }
+        ],
+        "tags": [
+          "podcast"
+        ]
+      }
+    },
+    "/podcast/{podcast}/": {
+      "parameters": [
+        {
+          "name": "podcast",
+          "in": "path",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Success",
+            "schema": {
+              "$ref": "#/definitions/API_PODCAST_EPISODES"
+            }
+          }
+        },
+        "operationId": "podcast",
+        "parameters": [
+          {
+            "name": "pg",
+            "in": "query",
+            "type": "integer",
+            "minimum": 0,
+            "exclusiveMinimum": true,
+            "description": "pagina",
+            "default": 1
+          },
+          {
+            "name": "hits",
+            "in": "query",
+            "type": "integer",
+            "minimum": 0,
+            "exclusiveMinimum": true,
+            "description": "numero risultati per pagina",
+            "default": 20
+          }
+        ],
+        "tags": [
+          "podcast"
+        ]
+      }
+    },
+    "/podcast/{podcast}/{episode}/": {
+      "parameters": [
+        {
+          "name": "podcast",
+          "in": "path",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "name": "episode",
+          "in": "path",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Success",
+            "schema": {
+              "$ref": "#/definitions/API_PODCAST_EPISODE"
+            }
+          }
+        },
+        "operationId": "podcast",
+        "parameters": [
+          {
+            "name": "pg",
+            "in": "query",
+            "type": "integer",
+            "minimum": 0,
+            "exclusiveMinimum": true,
+            "description": "pagina",
+            "default": 1
+          },
+          {
+            "name": "hits",
+            "in": "query",
+            "type": "integer",
+            "minimum": 0,
+            "exclusiveMinimum": true,
+            "description": "numero risultati per pagina",
+            "default": 20
+          }
+        ],
+        "tags": [
+          "podcast"
+        ]
+      }
+    },
+    "/sys/ping": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "operationId": "get_ping",
+        "tags": [
+          "sys"
+        ]
+      }
+    }
+  },
+  "info": {
+    "title": "ApiApp2024 v1",
+    "version": "1.0",
+    "description": "ApiApp2024 version 1.0"
+  },
+  "produces": [
+    "application/json"
+  ],
+  "consumes": [
+    "application/json"
+  ],
+  "tags": [
+    {
+      "name": "sys",
+      "description": "System"
+    },
+    {
+      "name": "podcast",
+      "description": "Podcast"
+    },
+    {
+      "name": "bff",
+      "description": "Backend For Frontend"
+    },
+    {
+      "name": "ms",
+      "description": "MicroServices"
+    }
+  ],
+  "definitions": {
+    "API_PODCAST": {
+      "properties": {
+        "head": {
+          "$ref": "#/definitions/model_generic_podcast_response_head"
+        },
+        "data": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/local_model_light_schema_podcast"
+          }
+        }
+      },
+      "type": "object"
+    },
+    "model_generic_podcast_response_head": {
+      "required": [
+        "data"
+      ],
+      "properties": {
+        "exec_time": {
+          "type": "number"
+        },
+        "status": {
+          "type": "integer"
+        },
+        "data": {
+          "$ref": "#/definitions/model_generic_response_head_data_field"
+        }
+      },
+      "type": "object"
+    },
+    "model_generic_response_head_data_field": {
+      "properties": {
+        "total": {
+          "type": "integer"
+        },
+        "pg": {
+          "type": "integer"
+        },
+        "hits": {
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "local_model_light_schema_podcast": {
+      "required": [
+        "author",
+        "description",
+        "id",
+        "meta"
+      ],
+      "properties": {
+        "id": {
+          "type": "integer",
+          "readOnly": true
+        },
+        "author": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "image": {
+          "type": "string"
+        },
+        "image_web": {
+          "type": "string"
+        },
+        "object": {
+          "type": "string"
+        },
+        "count": {
+          "type": "integer"
+        },
+        "slug": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "meta": {
+          "$ref": "#/definitions/model_model_podcast_meta_nested"
+        },
+        "access_level": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "model_model_podcast_meta_nested": {
+      "properties": {
+        "gift": {
+          "type": "integer"
+        },
+        "gift_all": {
+          "type": "integer"
+        },
+        "pushnotification": {
+          "type": "integer"
+        },
+        "chronological": {
+          "type": "integer"
+        },
+        "order": {
+          "type": "integer"
+        },
+        "robot": {
+          "type": "string"
+        },
+        "sponsored": {
+          "type": "integer"
+        },
+        "cyclicality": {
+          "type": "string"
+        },
+        "evidenza": {
+          "type": "string"
+        },
+        "cyclicalitytype": {
+          "type": "string"
+        },
+        "background_color": {
+          "type": "string",
+          "default": "#FFFFFF"
+        }
+      },
+      "type": "object"
+    },
+    "API_PODCAST_EPISODES": {
+      "properties": {
+        "head": {
+          "$ref": "#/definitions/model_generic_podcast_response_head"
+        },
+        "data": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/local_model_light_schema_episode"
+          }
+        }
+      },
+      "type": "object"
+    },
+    "local_model_light_schema_episode": {
+      "required": [
+        "author",
+        "gift",
+        "id",
+        "image",
+        "image_web",
+        "meta",
+        "parent",
+        "summary"
+      ],
+      "properties": {
+        "id": {
+          "type": "integer",
+          "readOnly": true
+        },
+        "author": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "_click": {
+          "type": "string",
+          "default": "episode"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "content_html": {
+          "type": "string"
+        },
+        "image": {
+          "type": "string"
+        },
+        "image_web": {
+          "type": "string"
+        },
+        "object": {
+          "type": "string"
+        },
+        "milliseconds": {
+          "type": "integer"
+        },
+        "minutes": {
+          "type": "integer"
+        },
+        "special": {
+          "type": "integer"
+        },
+        "share_url": {
+          "type": "string"
+        },
+        "slug": {
+          "type": "string"
+        },
+        "full_slug": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "episode_raw_url": {
+          "type": "string"
+        },
+        "meta": {
+          "$ref": "#/definitions/model_model_podcast_meta_nested"
+        },
+        "access_level": {
+          "type": "string"
+        },
+        "timestamp": {
+          "type": "integer"
+        },
+        "date": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "date_string": {
+          "type": "string"
+        },
+        "gift": {
+          "type": "boolean"
+        },
+        "parent": {
+          "$ref": "#/definitions/model_light_schema_podcast"
+        },
+        "queue_list": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "model_light_schema_podcast": {
+      "required": [
+        "author",
+        "description",
+        "id",
+        "meta"
+      ],
+      "properties": {
+        "id": {
+          "type": "integer",
+          "readOnly": true
+        },
+        "author": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "image": {
+          "type": "string"
+        },
+        "image_web": {
+          "type": "string"
+        },
+        "object": {
+          "type": "string"
+        },
+        "count": {
+          "type": "integer"
+        },
+        "slug": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "meta": {
+          "$ref": "#/definitions/model_model_podcast_meta_nested"
+        },
+        "access_level": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "API_PODCAST_EPISODE": {
+      "properties": {
+        "head": {
+          "$ref": "#/definitions/model_generic_podcast_response_head"
+        },
+        "data": {
+          "$ref": "#/definitions/local_model_full_schema_episode"
+        }
+      },
+      "type": "object"
+    },
+    "local_model_full_schema_episode": {
+      "required": [
+        "author",
+        "id",
+        "image",
+        "image_web",
+        "meta",
+        "parent",
+        "summary"
+      ],
+      "properties": {
+        "id": {
+          "type": "integer",
+          "readOnly": true
+        },
+        "author": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "content_html": {
+          "type": "string"
+        },
+        "image": {
+          "type": "string"
+        },
+        "image_web": {
+          "type": "string"
+        },
+        "object": {
+          "type": "string"
+        },
+        "milliseconds": {
+          "type": "integer"
+        },
+        "minutes": {
+          "type": "integer"
+        },
+        "special": {
+          "type": "integer"
+        },
+        "share_url": {
+          "type": "string"
+        },
+        "slug": {
+          "type": "string"
+        },
+        "full_slug": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "episode_raw_url": {
+          "type": "string"
+        },
+        "meta": {
+          "$ref": "#/definitions/model_model_podcast_meta_nested"
+        },
+        "access_level": {
+          "type": "string"
+        },
+        "timestamp": {
+          "type": "integer"
+        },
+        "date": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "date_string": {
+          "type": "string"
+        },
+        "gift": {
+          "type": "string"
+        },
+        "parent": {
+          "$ref": "#/definitions/model_light_schema_podcast"
+        },
+        "queue_list": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        }
+      },
+      "type": "object"
+    },
+    "API_BFF_HP": {
+      "properties": {
+        "head": {
+          "$ref": "#/definitions/model_response_head"
+        },
+        "data": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/model_bff_components_response"
+          }
+        }
+      },
+      "type": "object"
+    },
+    "model_response_head": {
+      "properties": {
+        "status": {
+          "type": "integer"
+        },
+        "exec_time": {
+          "type": "number"
+        },
+        "debug_extra": {
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "model_bff_components_response": {
+      "properties": {
+        "key": {
+          "type": "string"
+        },
+        "head": {
+          "$ref": "#/definitions/model_bff_components_response_head"
+        },
+        "meta": {
+          "$ref": "#/definitions/model_bff_components_response_meta"
+        },
+        "data": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/local_model_light_schema_episode"
+          }
+        }
+      },
+      "type": "object"
+    },
+    "model_bff_components_response_head": {
+      "properties": {
+        "total": {
+          "type": "integer"
+        },
+        "status": {
+          "type": "integer"
+        },
+        "params": {
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "model_bff_components_response_meta": {
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "show_label": {
+          "type": "boolean"
+        },
+        "link_to": {
+          "type": "string"
+        },
+        "presentation": {
+          "type": "string"
+        },
+        "extra": {
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "API_BFF_PODCAST": {
+      "properties": {
+        "head": {
+          "$ref": "#/definitions/model_response_head"
+        },
+        "data": {
+          "$ref": "#/definitions/model_bff_podcast_components"
+        }
+      },
+      "type": "object"
+    },
+    "model_bff_podcast_components": {
+      "properties": {
+        "podcast": {
+          "$ref": "#/definitions/model_components_bff_podcast"
+        },
+        "episodes": {
+          "$ref": "#/definitions/model_components_bff_episode_wop"
+        },
+        "articoli": {
+          "$ref": "#/definitions/model_components_bff_content"
+        }
+      },
+      "type": "object"
+    },
+    "model_components_bff_podcast": {
+      "properties": {
+        "head": {
+          "$ref": "#/definitions/local_model_bff_components_response_head"
+        },
+        "meta": {
+          "$ref": "#/definitions/local_model_bff_components_response_meta"
+        },
+        "data": {
+          "$ref": "#/definitions/local_model_light_schema_podcast"
+        }
+      },
+      "type": "object"
+    },
+    "local_model_bff_components_response_head": {
+      "properties": {
+        "status": {
+          "type": "integer"
+        },
+        "exec_time": {
+          "type": "number"
+        },
+        "debug_extra": {
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "local_model_bff_components_response_meta": {
+      "properties": {
+        "status": {
+          "type": "integer"
+        },
+        "exec_time": {
+          "type": "number"
+        },
+        "debug_extra": {
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "model_components_bff_episode_wop": {
+      "properties": {
+        "head": {
+          "$ref": "#/definitions/local_model_bff_components_response_head"
+        },
+        "meta": {
+          "$ref": "#/definitions/local_model_bff_components_response_meta"
+        },
+        "data": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/local_model_light_schema_episode_without_parent"
+          }
+        }
+      },
+      "type": "object"
+    },
+    "local_model_light_schema_episode_without_parent": {
+      "required": [
+        "author",
+        "id",
+        "image",
+        "image_web",
+        "meta",
+        "summary"
+      ],
+      "properties": {
+        "id": {
+          "type": "integer",
+          "readOnly": true
+        },
+        "author": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "content_html": {
+          "type": "string"
+        },
+        "image": {
+          "type": "string"
+        },
+        "image_web": {
+          "type": "string"
+        },
+        "object": {
+          "type": "string"
+        },
+        "milliseconds": {
+          "type": "integer"
+        },
+        "minutes": {
+          "type": "integer"
+        },
+        "special": {
+          "type": "integer"
+        },
+        "share_url": {
+          "type": "string"
+        },
+        "slug": {
+          "type": "string"
+        },
+        "full_slug": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "episode_raw_url": {
+          "type": "string"
+        },
+        "meta": {
+          "$ref": "#/definitions/model_model_podcast_meta_nested"
+        },
+        "access_level": {
+          "type": "string"
+        },
+        "timestamp": {
+          "type": "integer"
+        },
+        "date": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "date_string": {
+          "type": "string"
+        },
+        "gift": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "model_components_bff_content": {
+      "properties": {
+        "head": {
+          "$ref": "#/definitions/local_model_bff_components_response_head"
+        },
+        "meta": {
+          "$ref": "#/definitions/local_model_bff_components_response_meta"
+        },
+        "data": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/local_model_light_schema_content"
+          }
+        }
+      },
+      "type": "object"
+    },
+    "local_model_light_schema_content": {
+      "required": [
+        "id",
+        "title"
+      ],
+      "properties": {
+        "id": {
+          "type": "integer",
+          "readOnly": true
+        },
+        "title": {
+          "type": "string"
+        },
+        "link": {
+          "type": "string"
+        },
+        "image": {
+          "type": "string"
+        },
+        "timestamp": {
+          "type": "string"
+        },
+        "access_level": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "API_BFF_EPISODE": {
+      "properties": {
+        "head": {
+          "$ref": "#/definitions/model_response_head"
+        },
+        "data": {
+          "$ref": "#/definitions/model_response_bff_episode"
+        }
+      },
+      "type": "object"
+    },
+    "model_response_bff_episode": {
+      "properties": {
+        "episode": {
+          "$ref": "#/definitions/local_model_bff_components_response_episode"
+        },
+        "related": {
+          "$ref": "#/definitions/local_model_bff_components_response_related"
+        }
+      },
+      "type": "object"
+    },
+    "local_model_bff_components_response_episode": {
+      "properties": {
+        "head": {
+          "$ref": "#/definitions/local_model_bff_components_response_head"
+        },
+        "meta": {
+          "$ref": "#/definitions/local_model_bff_components_response_meta"
+        },
+        "data": {
+          "$ref": "#/definitions/local_model_light_schema_episode"
+        }
+      },
+      "type": "object"
+    },
+    "local_model_bff_components_response_related": {
+      "properties": {
+        "head": {
+          "$ref": "#/definitions/local_model_bff_components_response_head"
+        },
+        "meta": {
+          "$ref": "#/definitions/local_model_bff_components_response_meta"
+        },
+        "data": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/local_model_light_schema_episode"
+          }
+        }
+      },
+      "type": "object"
+    }
+  },
+  "responses": {
+    "ParseError": {
+      "description": "When a mask can't be parsed"
+    },
+    "MaskError": {
+      "description": "When any error occurs on mask"
+    }
+  }
+}

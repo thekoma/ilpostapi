@@ -30,6 +30,17 @@ spec:
         #   capabilities:
         #     drop:
         #     - ALL
+        env:
+        - name: EMAIL
+          valueFrom:
+            secretKeyRef:
+              name: ilpost-api-credentials
+              key: EMAIL
+        - name: PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: ilpost-api-credentials
+              key: PASSWORD
         ports:
         - containerPort: 5000
         volumeMounts:
@@ -72,17 +83,6 @@ spec:
         envFrom:
         - configMapRef:
             name: ilpostapi-config
-        env:
-        - name: EMAIL
-          valueFrom:
-            secretKeyRef:
-              name: ilpostapi-credentials
-              key: EMAIL
-        - name: PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: ilpostapi-credentials
-              key: PASSWORD
       volumes:
       - name: data
       - name: tmp
