@@ -14,12 +14,15 @@ Un'interfaccia web elegante per accedere ai podcast de Il Post.
 
 ### 🎧 Interfaccia Web
 - Design moderno con temi Catppuccin (Latte, Frappé, Macchiato, Mocha)
-- Player audio integrato con controlli di navigazione
+- Player audio integrato con controlli di navigazione e stato persistente
 - Visualizzazione dettagliata degli episodi con data, durata e descrizione
 - Sfondo dinamico basato sulla copertina del podcast
 - Ricerca fuzzy in tempo reale su titoli, descrizioni e autori
 - Refresh individuale degli episodi
 - Cache intelligente con persistenza su database SQLite
+- Player minimizzabile con animazioni fluide
+- Mantenimento dello stato di riproduzione durante la navigazione
+- Sincronizzazione del player tra diverse schede del browser
 
 ### 📅 Gestione Episodi
 - Visualizzazione ordinata per data di pubblicazione
@@ -112,14 +115,25 @@ stringData:
   PASSWORD: your-password
 ```
 
+In alternativa, puoi creare il secret direttamente da linea di comando:
+
+```bash
+kubectl create secret generic ilpostapi \
+  --namespace ilpostapi \
+  --from-literal=EMAIL='your-email@domain.com' \
+  --from-literal=PASSWORD='your-password'
+```
+
 Dopo aver creato le risorse necessarie, puoi procedere con l'installazione usando Helm:
 
 ```bash
-helm repo add gimlet-io https://chart.gimlet.io
+helm repo add onechart https://chart.onechart.dev
 helm repo update
 
-helm install ilpostapi gimlet-io/onechart \
+helm install ilpostapi onechart/onechart \
   --version 0.73.0 \
+  --namespace ilpostapi \
+  --create-namespace \
   --set image.repository=ghcr.io/thekoma/ilpostapi \
   --set image.tag=latest \
   --set containerPort=5000 \
@@ -129,10 +143,10 @@ helm install ilpostapi gimlet-io/onechart \
   --set resources.requests.memory=128Mi \
   --set container.imagePullPolicy=Always \
   --set secretName=ilpostapi \
-  --set volumes[0].name=data \
-  --set volumes[0].persistentVolumeClaim.claimName=ilpostapi-data \
-  --set volumeMounts[0].name=data \
-  --set volumeMounts[0].mountPath=/data
+  --set 'volumes[0].name=data' \
+  --set 'volumes[0].path=/data' \
+  --set 'volumes[0].size=1Gi' \
+  --set 'volumes[0].storageClass=standard'
 ```
 
 Per una configurazione più avanzata, usa un file `values.yaml`:
@@ -156,11 +170,9 @@ image:
 secretName: ilpostapi
 volumes:
   - name: data
-    persistentVolumeClaim:
-      claimName: ilpostapi-data
-volumeMounts:
-  - name: data
-    mountPath: /data
+    path: /data
+    size: 1Gi
+    storageClass: standard
 ingresses:
   - host: ilpostapi.yourdomain
     tlsEnabled: true
@@ -182,25 +194,34 @@ services:
       - TZ=Europe/Rome
       - EMAIL=your-email@domain.com
       - PASSWORD=your-password
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
     volumes:
       - ./data:/data
     restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          cpus: '500m'
-          memory: 500M
-        reservations:
-          cpus: '100m'
-          memory: 128M
 ```
 
 Prima di avviare l'applicazione, crea la directory per i dati:
 
 ```bash
 mkdir -p ./data
-chmod 777 ./data  # Assicura i permessi corretti
 ```
+
+> [!IMPORTANT]
+> Per impostazione predefinita, il container userà UID:GID 1000:1000. Se hai bisogno di usare un utente diverso, puoi specificarlo in due modi:
+> 1. Tramite variabili d'ambiente prima del lancio:
+>    ```bash
+>    export PUID=1001
+>    export PGID=1001
+>    docker-compose up -d
+>    ```
+> 2. Creando un file `.env` nella stessa directory del docker-compose:
+>    ```bash
+>    echo "PUID=$(id -u)" > .env
+>    echo "PGID=$(id -g)" >> .env
+>    ```
+>
+> In entrambi i casi, non è necessario eseguire manualmente il chown della directory.
 
 Poi avvia l'applicazione:
 
