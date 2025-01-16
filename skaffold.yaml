@@ -9,15 +9,25 @@ build:
         dockerfile: Dockerfile
       sync:
         infer:
-           - 'src/database/__init__.py'
-           - 'src/**/*.py'
-           - 'src/**/*.html'
-           - 'src/**/*.css'
-           - 'src/**/*.js'
-           - 'src/**/*.json'
-           - 'src/**/*.txt'
-           - 'src/**/*.yaml'
-           - 'src/**/*.yml'
+          - 'src/database/__init__.py'
+          - 'src/**/*.py'
+          - 'src/**/*.html'
+          - 'src/**/*.css'
+          - 'src/**/*.js'
+          - 'src/**/*.json'
+          - 'src/**/*.txt'
+          - 'src/**/*.yaml'
+          - 'src/**/*.yml'
+manifests:
+  kustomize:
+    paths:
+    - deploy/k8s/base
+portForward:
+- resourceType: deployment
+  resourceName: ilpostapi
+  port: 5000
+  address: 0.0.0.0
+  localPort: 5000
 profiles:
 - name: dev
   manifests:
@@ -26,12 +36,6 @@ profiles:
       - deploy/k8s/overlays/dev
   deploy:
     kubectl: {}
-  portForward:
-  - resourceType: deployment
-    resourceName: dev-ilpostapi
-    port: 5000
-    address: 0.0.0.0
-    localPort: 5000
 - name: prod
   manifests:
     kustomize:

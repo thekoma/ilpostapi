@@ -1,0 +1,487 @@
+/* Stili per gli episodi */
+.episode-title {
+    font-size: 1.1em;
+    font-weight: 600;
+    margin-bottom: 0.5em;
+    color: var(--text);
+}
+
+.episode-description {
+    margin-top: 8px;
+    padding: 8px;
+    background-color: var(--surface0);
+    border-radius: 4px;
+    font-size: 0.9em;
+    color: var(--subtext);
+    line-height: 1.4;
+    position: relative;
+    transition: max-height 0.3s ease-out;
+}
+
+.episode-description:not(.expanded) img {
+    display: none;
+}
+
+.episode-description.truncated {
+    max-height: 4.2em;
+    overflow: hidden;
+}
+
+.episode-description.truncated::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    width: 100%;
+    height: 1.4em;
+    background: linear-gradient(transparent, var(--surface0));
+}
+
+.episode-description p {
+    margin: 0.5em 0;
+}
+
+.episode-description a {
+    color: var(--accent);
+    text-decoration: none;
+}
+
+.episode-description a:hover {
+    text-decoration: underline;
+}
+
+.show-more {
+    font-size: 0.8em;
+    color: var(--accent);
+    cursor: pointer;
+    margin-top: 0.2em;
+    display: inline-block;
+}
+
+.show-more:hover {
+    text-decoration: underline;
+}
+
+.show-description-button {
+    background: none;
+    border: none;
+    color: var(--accent);
+    cursor: pointer;
+    padding: 4px 8px;
+    margin: 4px 0;
+    border-radius: 4px;
+    transition: background-color 0.2s;
+}
+
+.show-description-button:hover {
+    background-color: var(--surface2);
+}
+
+.show-description-button:disabled {
+    cursor: wait;
+    opacity: 0.7;
+}
+
+.date-cell {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    white-space: nowrap;
+}
+
+.date-main {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.date-year {
+    color: var(--subtext);
+    font-size: 0.9em;
+}
+
+.date-time {
+    margin-left: 8px;
+    color: var(--subtext);
+    font-size: 0.85em;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.date-time i {
+    font-size: 0.9em;
+}
+
+.pagination {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 8px;
+    margin: 8px 0;
+    padding: 4px 8px;
+    background: var(--surface0);
+    border-radius: 4px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+    font-size: 0.85em;
+}
+
+.pagination-info {
+    color: var(--subtext);
+    white-space: nowrap;
+    margin-right: 8px;
+}
+
+.pagination-controls {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+}
+
+.page-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 24px;
+    height: 24px;
+    padding: 0 6px;
+    border-radius: 12px;
+    border: none;
+    background: var(--surface1);
+    color: var(--text);
+    text-decoration: none;
+    font-weight: 500;
+    transition: all 0.2s ease;
+    cursor: pointer;
+    position: relative;
+}
+
+.page-button:hover {
+    background: var(--surface2);
+    transform: translateY(-1px);
+}
+
+.page-button.active {
+    background: var(--accent);
+    color: white;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+.per-page-selector {
+    display: flex;
+    align-items: center;
+    margin-left: auto;
+    gap: 4px;
+}
+
+.per-page-selector select {
+    padding: 2px 6px;
+    border-radius: 12px;
+    border: none;
+    background: var(--surface1);
+    color: var(--text);
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.per-page-selector select:hover {
+    background: var(--surface2);
+}
+
+.page-dots {
+    position: relative;
+}
+
+.page-selector {
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    margin-top: 4px;
+    padding: 4px;
+    background: var(--mantle);
+    border: 1px solid var(--surface2);
+    border-radius: 4px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    z-index: 1000;
+    display: none;
+    flex-direction: column;
+    min-width: 80px;
+    max-height: 160px;
+    overflow-y: auto;
+    backdrop-filter: blur(10px);
+    scrollbar-width: thin;
+    scrollbar-color: var(--surface2) transparent;
+}
+
+.page-selector::-webkit-scrollbar {
+    width: 4px;
+}
+
+.page-selector::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.page-selector::-webkit-scrollbar-thumb {
+    background-color: var(--surface2);
+    border-radius: 2px;
+}
+
+/* Mostra il selettore quando il pulsante è in hover o il selettore è visibile */
+.page-dots:hover .page-selector,
+.page-selector.visible {
+    display: flex;
+}
+
+.page-selector::before {
+    content: '';
+    position: absolute;
+    top: -12px;
+    left: 0;
+    right: 0;
+    height: 12px;
+    background: transparent;
+}
+
+.page-option {
+    padding: 4px 8px;
+    text-decoration: none;
+    color: var(--text);
+    border-radius: 2px;
+    transition: all 0.2s ease;
+    background: var(--base);
+    border: 1px solid transparent;
+    font-size: 0.85em;
+    margin: 1px 0;
+}
+
+.page-option:hover {
+    background: var(--surface1);
+    border-color: var(--surface2);
+    transform: translateX(2px);
+}
+
+.page-option.active {
+    background: var(--accent);
+    color: white;
+    font-weight: 500;
+    border-color: var(--accent);
+}
+
+.actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    white-space: nowrap;
+}
+
+.play-button,
+.download-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border: none;
+    border-radius: 16px;
+    background: var(--surface1);
+    color: var(--text);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-decoration: none;
+}
+
+.play-button:hover,
+.download-button:hover {
+    background: var(--surface2);
+    transform: translateY(-1px);
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+}
+
+th, td {
+    padding: 12px;
+    text-align: left;
+    vertical-align: top;
+}
+
+th {
+    background: var(--surface0);
+    color: var(--subtext);
+    font-weight: 500;
+    font-size: 0.9em;
+}
+
+td {
+    border-bottom: 1px solid var(--surface0);
+}
+
+/* Colonne con larghezze relative usando flex */
+.episode-cell {
+    width: auto;
+    min-width: 0;
+    flex: 1;
+    position: relative;
+}
+
+.date-cell {
+    width: 160px;
+    min-width: 160px;
+}
+
+.duration-cell {
+    width: 100px;
+    min-width: 100px;
+}
+
+.actions-cell {
+    width: 100px;
+    min-width: 100px;
+    text-align: right;
+}
+
+/* Stili per il contenuto delle celle */
+.episode-title {
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    margin-right: 8px;
+}
+
+.actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+/* Stile per la tabella degli episodi */
+.episodes-table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+}
+
+.episodes-table th, .episodes-table td {
+    padding: 12px;
+    text-align: left;
+    vertical-align: top;
+}
+
+/* Larghezze colonne */
+.episodes-table th:nth-child(1), .episodes-table td:nth-child(1) {
+    width: 65%;  /* Colonna episodio più larga */
+}
+
+.episodes-table th:nth-child(2), .episodes-table td:nth-child(2) {
+    width: 20%;  /* Data ottimizzata */
+}
+
+.episodes-table th:nth-child(3), .episodes-table td:nth-child(3) {
+    width: 5%;  /* Durata più compatta */
+}
+
+.episodes-table th:nth-child(4), .episodes-table td:nth-child(4) {
+    width: 10%;  /* Azioni più compatta */
+    text-align: right;  /* Allineamento a destra per titolo e contenuto */
+}
+
+.episode-title-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.episode-expand-button {
+    background: none;
+    border: none;
+    color: var(--subtext);
+    cursor: pointer;
+    padding: 4px;
+    transition: transform 0.2s ease;
+}
+
+.episode-expand-button.expanded {
+    transform: rotate(180deg);
+}
+
+.episode-expand-button:hover {
+    color: var(--text);
+}
+
+.episode-actions {
+    display: flex;
+    gap: 4px;
+    margin-left: auto;
+}
+
+.refresh-button {
+    background: none;
+    border: none;
+    color: var(--subtext);
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+}
+
+.refresh-button:hover {
+    color: var(--text);
+    background: var(--surface1);
+}
+
+.refresh-button:disabled {
+    opacity: 0.5;
+    cursor: wait;
+}
+
+.actions-cell {
+    text-align: center;  /* Centra il testo dell'header */
+}
+
+.actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.refresh-button,
+.play-button,
+.download-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border: none;
+    border-radius: 16px;
+    background: var(--surface1);
+    color: var(--text);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-decoration: none;
+}
+
+.refresh-button:hover,
+.play-button:hover,
+.download-button:hover {
+    background: var(--surface2);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.refresh-button:disabled,
+.play-button:disabled,
+.download-button:disabled {
+    opacity: 0.5;
+    cursor: wait;
+    transform: none;
+    box-shadow: none;
+}
