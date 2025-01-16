@@ -36,6 +36,8 @@ jobs:
           tags: |
             # Set latest tag for default branch
             type=raw,value=latest,enable={{is_default_branch}}
+            # Set specific version from dispatch or git tag
+            type=raw,value=${{ github.event.client_payload.tag_name || github.ref_name }}
             # Add version tags
             type=ref,event=tag
             type=semver,pattern={{version}}
