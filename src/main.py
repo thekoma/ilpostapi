@@ -77,8 +77,8 @@ if not EMAIL or not PASSWORD:
     raise ValueError("EMAIL and PASSWORD are required but not set properly")
 
 # Base URLs for the external APIs
-PODCAST_API_BASE_URL = "https://api-prod.ilpost.it./podcast/v1/podcast"
-API_AUTH_LOGIN = "https://api-prod.ilpost.it./user/v1/auth/login"
+PODCAST_API_BASE_URL = "https://api-prod.ilpost.it/podcast/v1/podcast"
+API_AUTH_LOGIN = "https://api-prod.ilpost.it/user/v1/auth/login"
 
 # Token caching configuration
 TOKEN_CACHE_TTL = 2 * 60 * 60  # 2 hours in seconds
@@ -227,6 +227,48 @@ templates.env.globals.update(
     }
 )
 
+# Aggiungiamo le funzioni ai filtri di Jinja2
+templates.env.filters.update(
+    {
+        "formatDateMain": format_date_main,
+        "formatDateYear": format_date_year,
+        "formatDateTime": format_date_time,
+    }
+)
+
+
+# Funzione per l'escape di stringhe JavaScript
+def escapejs(text):
+    """Escape di stringhe per JavaScript."""
+    if not text:
+        return ""
+    text = str(text)
+    chars = {
+        "\\": "\\\\",
+        '"': '\\"',
+        "'": "\\'",
+        "\n": "\\n",
+        "\r": "\\r",
+        "\t": "\\t",
+        "\f": "\\f",
+        "\b": "\\b",
+        "<": "\\u003C",
+        ">": "\\u003E",
+        "&": "\\u0026",
+    }
+    return "".join(chars.get(c, c) for c in text)
+
+
+# Aggiungiamo le funzioni ai filtri di Jinja2
+templates.env.filters.update(
+    {
+        "formatDateMain": format_date_main,
+        "formatDateYear": format_date_year,
+        "formatDateTime": format_date_time,
+        "escapejs": escapejs,  # Aggiungiamo il nuovo filtro
+    }
+)
+
 # --- Helper Functions ---
 
 BASE_URL = os.getenv("BASE_URL", "http://localhost:5000")
@@ -237,7 +279,9 @@ def get_cached_token():
     """Ottiene un token di autenticazione (cached)."""
     logger.info("🔄 Cache MISS - Richiesta nuovo token di autenticazione")
     try:
-        response = http_client.post(API_AUTH_LOGIN, data={"username": EMAIL, "password": PASSWORD})
+        response = http_client.post(
+            API_AUTH_LOGIN, data={"username": EMAIL, "password": PASSWORD}
+        )
         response.raise_for_status()
         token_data = response.json()
         token = token_data["data"]["data"]["token"]
@@ -269,7 +313,7 @@ async def make_api_request(url: str, headers: Optional[Dict] = None) -> Dict:
             response = await client.get(url, headers=headers)
             if response.status_code == 429:  # Too Many Requests
                 logger.warning("Rate limit raggiunto, attendo prima di riprovare")
-                await asyncio.sleep(60)  # Attendi 1 minuto
+                await asyncio.sleep(10)  # Attendi 1 minuto
                 return await make_api_request(url, headers)
             response.raise_for_status()
             data = response.json()
@@ -301,9 +345,14 @@ async def fetch_podcasts(page: int = 1, hits: int = 10000):
             return cached_data
 
     token = get_cached_token()
+    # Il Post API richiede sia il token di autenticazione che una Apikey statica
     headers = {"Apikey": "testapikey", "Token": token}
-    logger.info(f"📻 Recupero podcast dalla pagina {page} con {hits} risultati per pagina")
-    data = await make_api_request(f"{PODCAST_API_BASE_URL}/?pg={page}&hits={hits}", headers=headers)
+    logger.info(
+        f"📻 Recupero podcast dalla pagina {page} con {hits} risultati per pagina"
+    )
+    data = await make_api_request(
+        f"{PODCAST_API_BASE_URL}/?pg={page}&hits={hits}", headers=headers
+    )
 
     # Salva nella cache
     PODCASTS_CACHE[cache_key] = (data, current_time)
@@ -314,6 +363,7 @@ async def fetch_podcasts(page: int = 1, hits: int = 10000):
 async def fetch_episodes(podcast_id: int, page: int = 1, hits: int = 1):
     """Recupera gli episodi di un podcast."""
     token = get_cached_token()
+    # Il Post API richiede sia il token di autenticazione che una Apikey statica
     headers = {"Apikey": "testapikey", "Token": token}
     logger.info(f"🎧 Recupero episodi per il podcast {podcast_id} dalla pagina {page}")
     return await make_api_request(
@@ -321,42 +371,109 @@ async def fetch_episodes(podcast_id: int, page: int = 1, hits: int = 1):
     )
 
 
-async def fetch_all_episodes(podcast_id: int, batch_size: int = 10000):
-    """Recupera tutti gli episodi di un podcast."""
+async def fetch_episodes_batch(episode_ids: list[int]) -> Dict:
+    """Recupera un gruppo di episodi in una singola chiamata.
+
+    Args:
+        episode_ids: Lista di ID degli episodi da recuperare
+    Returns:
+        Dict con i dati degli episodi
+    """
+    if not episode_ids:
+        return {"data": []}
+
+    token = get_cached_token()
+    # Il Post API richiede sia il token di autenticazione che una Apikey statica
+    headers = {"Apikey": "testapikey", "Token": token}
+
+    # Convertiamo gli ID in stringa separata da virgole
+    ids_str = ",".join(map(str, episode_ids))
+    logger.info(f"🎧 Recupero batch di {len(episode_ids)} episodi")
+
+    return await make_api_request(
+        f"{PODCAST_API_BASE_URL}/episodes?ids={ids_str}", headers=headers
+    )
+
+
+async def fetch_all_episodes(podcast_id: int, batch_size: int = 500):
+    """Recupera tutti gli episodi di un podcast usando la paginazione ottimizzata.
+
+    Args:
+        podcast_id: ID del podcast
+        batch_size: Numero di episodi per pagina (default: 500 per performance ottimale)
+    """
     current_time = datetime.now().timestamp()
 
     # Controlla se abbiamo una versione cached valida
     if podcast_id in EPISODES_LIST_CACHE:
         cached_data, cache_time = EPISODES_LIST_CACHE[podcast_id]
         if current_time - cache_time < CACHE_TTL:
-            logger.info(f"🎯 Cache HIT - Lista episodi del podcast {podcast_id} trovata in cache")
+            logger.info(
+                f"🎯 Cache HIT - Lista episodi del podcast {podcast_id} trovata in cache"
+            )
             return cached_data
 
     logger.info(f"📥 Inizio recupero di tutti gli episodi per il podcast {podcast_id}")
-    page = 1
+
+    # Prima richiesta per ottenere il totale degli episodi
+    initial_data = await fetch_episodes(podcast_id, page=1, hits=1)
+    total_episodes = initial_data["head"]["data"]["total"]
+    logger.info(f"📊 Totale episodi da recuperare: {total_episodes}")
+
+    # Se abbiamo meno di 500 episodi, li prendiamo tutti in una volta
+    if total_episodes <= batch_size:
+        try:
+            logger.info(
+                f"📦 Recupero tutti gli {total_episodes} episodi in una singola richiesta"
+            )
+            response = await fetch_episodes(podcast_id, page=1, hits=total_episodes)
+            if response and "data" in response:
+                result = {"data": response["data"]}
+                EPISODES_LIST_CACHE[podcast_id] = (result, current_time)
+                return result
+        except Exception as e:
+            logger.error(f"❌ Errore nel recupero degli episodi: {str(e)}")
+            return {"data": []}
+
+    # Per podcast più grandi, usiamo la paginazione con batch di 500
     all_episodes = []
+    total_pages = (total_episodes + batch_size - 1) // batch_size
 
-    while True:
-        data = await fetch_episodes(podcast_id, page, batch_size)
-        episodes = data.get("data", [])
-        if not episodes:
-            break
+    for page in range(1, total_pages + 1):
+        try:
+            logger.info(
+                f"📃 Recupero pagina {page}/{total_pages} (batch di {batch_size} episodi)"
+            )
+            response = await fetch_episodes(podcast_id, page, batch_size)
 
-        all_episodes.extend(episodes)
-        total = data.get("total", 0)
-        logger.info(
-            f"📊 Recuperati {len(all_episodes)}/{total} episodi per il podcast {podcast_id}"
+            if not response or "data" not in response:
+                logger.error(f"❌ Risposta non valida per la pagina {page}")
+                continue
+
+            episodes = response["data"]
+            if not episodes:
+                logger.warning(f"⚠️ Nessun episodio trovato nella pagina {page}")
+                break
+
+            all_episodes.extend(episodes)
+            logger.info(f"✅ Recuperati {len(all_episodes)}/{total_episodes} episodi")
+
+        except Exception as e:
+            logger.error(f"❌ Errore nel recupero della pagina {page}: {str(e)}")
+            continue
+
+    # Verifica che abbiamo recuperato almeno il 90% degli episodi
+    if len(all_episodes) < total_episodes * 0.9:
+        logger.error(
+            f"❌ Recuperati solo {len(all_episodes)}/{total_episodes} episodi. "
+            "Non abbastanza per considerare il recupero completo"
         )
-
-        if len(all_episodes) >= total:
-            break
-
-        page += 1
+        return {"data": []}
 
     result = {"data": all_episodes}
-    # Salva nella cache
     EPISODES_LIST_CACHE[podcast_id] = (result, current_time)
 
+    logger.info(f"✨ Recupero completato: {len(all_episodes)}/{total_episodes} episodi")
     return result
 
 
@@ -536,12 +653,12 @@ class PodcastRSSGenerator:
                     pubDate.text = pub_date.strftime("%a, %d %b %Y %H:%M:%S %z")
                 except (ValueError, TypeError) as e:
                     logger.error(f"Errore nel parsing della data: {e}")
-                    pubDate.text = datetime.now(tz=timezone(timedelta(hours=1))).strftime(
-                        "%a, %d %b %Y %H:%M:%S %z"
-                    )
+                    pubDate.text = datetime.now(
+                        tz=timezone(timedelta(hours=1))
+                    ).strftime("%a, %d %b %Y %H:%M:%S %z")
 
             # Durata dell'episodio
-            if "milliseconds" in episode:
+            if "milliseconds" in episode and episode["milliseconds"] is not None:
                 duration_secs = episode["milliseconds"] // 1000
                 hours = duration_secs // 3600
                 minutes = (duration_secs % 3600) // 60
@@ -611,7 +728,9 @@ class PodcastRDFGenerator:
 
         # Creazione del channel
         channel = ET.SubElement(
-            rdf, "channel", {"rdf:about": f"{base_url}/podcast/{podcast_data['id']}/rdf"}
+            rdf,
+            "channel",
+            {"rdf:about": f"{base_url}/podcast/{podcast_data['id']}/rdf"},
         )
 
         # Metadati del canale
@@ -708,11 +827,15 @@ async def search_podcasts(query: str, request: Request):
     podcasts = await fetch_podcasts()
     base_url = request.base_url
     titles = [podcast["title"] for podcast in podcasts["data"]]
-    matches = get_close_matches(query, titles, n=1, cutoff=0.2)  # Adjust cutoff as needed
+    matches = get_close_matches(
+        query, titles, n=1, cutoff=0.2
+    )  # Adjust cutoff as needed
 
     if matches:
         matched_title = matches[0]
-        matching_podcast = next((p for p in podcasts["data"] if p["title"] == matched_title), None)
+        matching_podcast = next(
+            (p for p in podcasts["data"] if p["title"] == matched_title), None
+        )
 
         if matching_podcast:
             podcast_id = matching_podcast["id"]
@@ -725,7 +848,9 @@ async def search_podcasts(query: str, request: Request):
                 "podcast_api": f"{base_url}podcast/{podcast_id}/last",
             }
 
-    return JSONResponse(content={"message": "No matching podcast found"}, status_code=404)
+    return JSONResponse(
+        content={"message": "No matching podcast found"}, status_code=404
+    )
 
 
 @app.get(
@@ -774,12 +899,16 @@ async def healthcheck():
 
 @app.get("/podcast/{podcast_id}/rss")
 async def get_podcast_rss(
-    podcast_id: int = Path(...), request: Request = None, db: AsyncSession = Depends(get_db)
+    podcast_id: int = Path(...),
+    request: Request = None,
+    db: AsyncSession = Depends(get_db),
 ):
     try:
         # Recuperiamo le informazioni del podcast
         podcasts = await fetch_podcasts()
-        podcast_info = next((p for p in podcasts["data"] if p["id"] == podcast_id), None)
+        podcast_info = next(
+            (p for p in podcasts["data"] if p["id"] == podcast_id), None
+        )
 
         if not podcast_info:
             raise HTTPException(status_code=404, detail="Podcast non trovato")
@@ -793,7 +922,9 @@ async def get_podcast_rss(
             api_episodes = await fetch_all_episodes(podcast_id)
 
             # Otteniamo o creiamo il podcast nel database
-            db_podcast = await get_or_create_podcast(db, str(podcast_id), api_episodes["data"][0])
+            db_podcast = await get_or_create_podcast(
+                db, str(podcast_id), api_episodes["data"][0]
+            )
             if not db_podcast:
                 raise HTTPException(
                     status_code=404, detail="Impossibile creare o recuperare il podcast"
@@ -844,7 +975,11 @@ async def get_podcast_rss(
                 "description": episode.description,
                 "content_html": episode.description,
                 "episode_raw_url": episode.audio_url,
-                "date": episode.publication_date.isoformat() if episode.publication_date else None,
+                "date": (
+                    episode.publication_date.isoformat()
+                    if episode.publication_date
+                    else None
+                ),
                 "milliseconds": episode.duration * 1000 if episode.duration else None,
             }
             episodes_data["data"].append(episode_data)
@@ -862,7 +997,9 @@ async def get_podcast_rss(
         request_base_url = str(request.base_url).rstrip("/")
 
         # Generiamo il feed RSS
-        rss_feed = rss_generator.generate_feed(podcast_data, episodes_data, request_base_url)
+        rss_feed = rss_generator.generate_feed(
+            podcast_data, episodes_data, request_base_url
+        )
 
         return Response(content=rss_feed, media_type="application/rss+xml")
     except Exception as e:
@@ -885,11 +1022,17 @@ async def get_last_episode_info(podcast_id: int, db: AsyncSession = None) -> tup
         episodes, needs_update = await get_podcast_episodes(db, podcast_id)
         if episodes and not needs_update:
             # Ordiniamo per data di pubblicazione (più recenti prima)
-            episodes.sort(key=lambda x: x.publication_date or datetime.min, reverse=True)
+            episodes.sort(
+                key=lambda x: x.publication_date or datetime.min, reverse=True
+            )
             if episodes:
                 latest = episodes[0]
                 cached_info = (
-                    latest.publication_date.isoformat() if latest.publication_date else None,
+                    (
+                        latest.publication_date.isoformat()
+                        if latest.publication_date
+                        else None
+                    ),
                     latest.title,
                     latest.duration * 1000 if latest.duration else None,
                 )
@@ -925,54 +1068,63 @@ async def get_last_episode_date(podcast_id: int) -> str:
 @app.get("/podcasts/directory", response_class=HTMLResponse)
 async def podcast_directory(request: Request, db: AsyncSession = Depends(get_db)):
     """Mostra la directory di tutti i podcast come pagina principale."""
-    # Recuperiamo la lista dei podcast con una sola chiamata
-    podcasts = await fetch_podcasts(page=1, hits=100)
-    logger.debug(f"Recuperati {len(podcasts['data'])} podcast")
+    try:
+        # Prima controlliamo la cache
+        current_time = datetime.now().timestamp()
+        needs_update = False
 
-    # Prepariamo i dati per il template, includendo l'ultimo episodio
-    podcast_list = []
-    for podcast in podcasts["data"]:
-        logger.debug(f"Elaborazione podcast {podcast['id']}: {podcast['title']}")
+        if "directory" in PODCASTS_CACHE:
+            cached_data, cache_time = PODCASTS_CACHE["directory"]
+            if current_time - cache_time < CACHE_TTL:
+                logger.info("🎯 Cache HIT - Directory podcast trovata in cache")
+                podcast_list = cached_data
+            else:
+                needs_update = True
+                podcast_list = cached_data  # Usiamo i dati cached mentre aggiorniamo
+        else:
+            # Se non c'è cache, facciamo un aggiornamento completo
+            needs_update = True
+            await update_podcast_directory_cache()
+            cached_data, _ = PODCASTS_CACHE.get("directory", ([], current_time))
+            podcast_list = cached_data
 
-        # Recuperiamo le informazioni dell'ultimo episodio in modo ottimizzato
-        last_episode_date, last_episode_title, last_episode_duration = await get_last_episode_info(
-            podcast["id"], db
+        return templates.TemplateResponse(
+            "podcast_directory.html",
+            {
+                "request": request,
+                "podcasts": podcast_list,
+                "year": datetime.now().year,
+                "needs_update": needs_update,
+            },
         )
-        logger.debug(
-            f"Informazioni ultimo episodio: data={last_episode_date}, titolo={last_episode_title}, durata={last_episode_duration}"
+    except Exception as e:
+        logger.error(f"Error fetching podcast directory: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail={"message": "Error fetching podcast directory", "error": str(e)},
         )
 
-        podcast_data = {
-            "id": podcast["id"],
-            "title": clean_html_text(podcast["title"]),
-            "image": podcast["image"],
-            "description": clean_html_text(podcast["description"]),
-            "author": clean_html_text(podcast["author"]),
-            "rss_url": f"/podcast/{podcast['id']}/rss",
-            "slug": podcast["slug"],
-            "last_episode_date": last_episode_date,
-            "last_episode_title": (
-                clean_html_text(last_episode_title) if last_episode_title else None
-            ),
-            "last_episode_duration": (
-                format_duration(last_episode_duration) if last_episode_duration else "N/D"
-            ),
-        }
-        logger.debug(f"Dati preparati per il template: {podcast_data}")
-        podcast_list.append(podcast_data)
 
-    # Ordiniamo i podcast per data dell'ultimo episodio
-    podcast_list.sort(
-        key=lambda x: (
-            x["last_episode_date"] if x["last_episode_date"] else "1970-01-01T00:00:00+00:00"
-        ),
-        reverse=True,
-    )
+@app.post("/api/podcasts/update", response_class=JSONResponse)
+async def update_podcasts_directory(db: AsyncSession = Depends(get_db)):
+    """Aggiorna la directory dei podcast in background."""
+    try:
+        success = await update_podcast_directory_cache()
+        if not success:
+            raise HTTPException(
+                status_code=500, detail={"message": "Error updating podcast directory"}
+            )
 
-    return templates.TemplateResponse(
-        "podcast_directory.html",
-        {"request": request, "podcasts": podcast_list, "year": datetime.now().year},
-    )
+        cached_data, _ = PODCASTS_CACHE.get(
+            "directory", ([], datetime.now().timestamp())
+        )
+        return JSONResponse({"success": True, "podcasts": cached_data})
+    except Exception as e:
+        logger.error(f"Error updating podcast directory: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail={"message": "Error updating podcast directory", "error": str(e)},
+        )
 
 
 @app.get("/podcast/{podcast_id}/episodes", response_class=HTMLResponse)
@@ -986,7 +1138,9 @@ async def podcast_episodes(
     try:
         # Prima recuperiamo le informazioni del podcast
         podcasts = await fetch_podcasts()
-        podcast_info = next((p for p in podcasts["data"] if p["id"] == podcast_id), None)
+        podcast_info = next(
+            (p for p in podcasts["data"] if p["id"] == podcast_id), None
+        )
 
         if not podcast_info:
             raise HTTPException(status_code=404, detail="Podcast non trovato")
@@ -1004,34 +1158,6 @@ async def podcast_episodes(
 
         # Controlliamo nel database
         episodes, needs_update = await get_podcast_episodes(db, podcast_id)
-
-        if needs_update:
-            # Se dobbiamo aggiornare, aspettiamo il rate limiter
-            await api_rate_limiter.wait()
-            # Prendiamo i dati freschi dall'API
-            response = await fetch_episodes(
-                podcast_id, hits=10000
-            )  # Prendiamo tutti gli episodi disponibili
-            podcast_data = response.get("data", [])
-
-            if not podcast_data:
-                raise HTTPException(
-                    status_code=404, detail="Nessun episodio trovato per questo podcast"
-                )
-
-            # Otteniamo prima il podcast esistente o ne creiamo uno nuovo
-            db_podcast = await get_or_create_podcast(db, str(podcast_id), podcast_data[0])
-            if not db_podcast:
-                raise HTTPException(
-                    status_code=404, detail="Impossibile creare o recuperare il podcast"
-                )
-
-            # Salviamo nel database
-            await save_episodes(db, db_podcast, podcast_data)
-            await update_podcast_check_time(db, db_podcast)
-
-            # Rileggiamo gli episodi dal database
-            episodes, _ = await get_podcast_episodes(db, db_podcast.id)
 
         # Ordiniamo gli episodi per data di pubblicazione (più recenti prima)
         episodes.sort(key=lambda x: x.publication_date or datetime.min, reverse=True)
@@ -1059,30 +1185,6 @@ async def podcast_episodes(
                 pages.append("...")
             pages.append(total_pages)
 
-        if not episodes:
-            # Creiamo un oggetto pagination vuoto
-            pagination = {
-                "current_page": page,
-                "per_page": per_page,
-                "total_items": 0,
-                "total_episodes": 0,  # Alias per il template
-                "total_pages": 0,
-                "has_next": False,
-                "has_prev": False,
-                "pages": [],
-            }
-
-            return templates.TemplateResponse(
-                "podcast_episodes.html",
-                {
-                    "request": request,
-                    "podcast": podcast,
-                    "episodes": [],
-                    "pagination": pagination,
-                    "podcast_id": podcast_id,
-                },
-            )
-
         # Paginazione
         start_idx = (page - 1) * per_page
         end_idx = start_idx + per_page
@@ -1092,12 +1194,13 @@ async def podcast_episodes(
         pagination = {
             "current_page": page,
             "per_page": per_page,
-            "total_items": total_items,
-            "total_episodes": total_items,  # Alias per il template
+            "total_items": total_items,  # Alias per il template
+            "total_episodes": total_items,
             "total_pages": total_pages,
             "has_next": has_next,
             "has_prev": has_prev,
             "pages": pages,
+            "needs_update": needs_update,  # Aggiungiamo questa informazione per il frontend
         }
 
         # Serializziamo gli episodi per il template
@@ -1108,14 +1211,18 @@ async def podcast_episodes(
                 "ilpost_id": episode.ilpost_id,
                 "title": clean_html_text(episode.title),
                 "description": clean_html_text(episode.description),
-                "content_html": episode.description,  # Manteniamo anche la versione HTML per chi la vuole usare
-                "episode_raw_url": episode.audio_url,  # Alias per il template
+                "content_html": episode.description,
+                "episode_raw_url": episode.audio_url,
                 "audio_url": episode.audio_url,
-                "date": episode.publication_date.isoformat() if episode.publication_date else None,
-                "milliseconds": (
+                "date": (
+                    episode.publication_date.isoformat()
+                    if episode.publication_date
+                    else None
+                ),
+                "milliseconds": (episode.duration * 1000 if episode.duration else None),
+                "duration": format_duration(
                     episode.duration * 1000 if episode.duration else None
-                ),  # Alias per il template
-                "duration": format_duration(episode.duration * 1000 if episode.duration else None),
+                ),
             }
             serialized_episodes.append(episode_dict)
 
@@ -1130,7 +1237,9 @@ async def podcast_episodes(
             },
         )
     except Exception as e:
-        logger.error(f"Error fetching episodes for podcast {podcast_id}: {str(e)}", exc_info=True)
+        logger.error(
+            f"Error fetching episodes for podcast {podcast_id}: {str(e)}", exc_info=True
+        )
         raise HTTPException(
             status_code=500,
             detail={
@@ -1148,7 +1257,9 @@ def serialize_episode(episode):
         "title": episode.title,
         "description": episode.description,
         "audio_url": episode.audio_url,
-        "date": episode.publication_date.isoformat() if episode.publication_date else None,
+        "date": (
+            episode.publication_date.isoformat() if episode.publication_date else None
+        ),
         "duration": (
             episode.duration * 1000 if episode.duration else None
         ),  # Convertiamo in millisecondi
@@ -1195,11 +1306,15 @@ async def get_podcast_episodes_json(
         episodes.sort(key=lambda x: x.publication_date or datetime.min, reverse=True)
 
         # Serializziamo gli episodi
-        serialized_episodes = [serialize_episode(episode) for episode in episodes[:per_page]]
+        serialized_episodes = [
+            serialize_episode(episode) for episode in episodes[:per_page]
+        ]
 
         return {"data": serialized_episodes}
     except Exception as e:
-        logger.error(f"Error fetching episodes for podcast {podcast_id}: {str(e)}", exc_info=True)
+        logger.error(
+            f"Error fetching episodes for podcast {podcast_id}: {str(e)}", exc_info=True
+        )
         raise HTTPException(
             status_code=500,
             detail={
@@ -1214,7 +1329,9 @@ async def get_podcast_rdf(podcast_id: int = Path(...), request: Request = None):
     """Genera il feed RDF per un podcast specifico."""
     try:
         podcasts = await fetch_podcasts()
-        podcast_info = next((p for p in podcasts["data"] if p["id"] == podcast_id), None)
+        podcast_info = next(
+            (p for p in podcasts["data"] if p["id"] == podcast_id), None
+        )
 
         if not podcast_info:
             raise HTTPException(status_code=404, detail="Podcast non trovato")
@@ -1246,7 +1363,9 @@ async def clear_cache():
     return {"message": "Cache pulita con successo"}
 
 
-async def fetch_episode_details(podcast_id: int, episode_id: int, db: AsyncSession = None):
+async def fetch_episode_details(
+    podcast_id: int, episode_id: int, db: AsyncSession = None
+):
     """Recupera i dettagli di un singolo episodio."""
     try:
         # Se abbiamo una sessione DB, prima cerchiamo lì
@@ -1255,7 +1374,9 @@ async def fetch_episode_details(podcast_id: int, episode_id: int, db: AsyncSessi
             result = await db.execute(stmt)
             episode = result.scalar_one_or_none()
             if episode and episode.description_verified:
-                logger.info(f"🎯 Cache HIT - Dettagli episodio {episode_id} trovati nel database")
+                logger.info(
+                    f"🎯 Cache HIT - Dettagli episodio {episode_id} trovati nel database"
+                )
                 return {
                     "data": {
                         "id": episode.id,
@@ -1268,13 +1389,17 @@ async def fetch_episode_details(podcast_id: int, episode_id: int, db: AsyncSessi
                             if episode.publication_date
                             else None
                         ),
-                        "milliseconds": episode.duration * 1000 if episode.duration else None,
+                        "milliseconds": (
+                            episode.duration * 1000 if episode.duration else None
+                        ),
                     }
                 }
 
         # Se non lo troviamo nel DB o la descrizione non è verificata, lo recuperiamo dall'API
         url = f"{PODCAST_API_BASE_URL}/{podcast_id}/{episode_id}/"
-        logger.warning(f"📝 Recupero dettagli episodio {episode_id} del podcast {podcast_id}")
+        logger.warning(
+            f"📝 Recupero dettagli episodio {episode_id} del podcast {podcast_id}"
+        )
 
         token = await get_token()
         headers = {"Apikey": "testapikey", "Token": token}
@@ -1318,7 +1443,9 @@ async def fetch_episode_details(podcast_id: int, episode_id: int, db: AsyncSessi
                     episode.title = episode_data.get("title", episode.title)
                     episode.description = description
                     episode.description_verified = True
-                    episode.audio_url = episode_data.get("episode_raw_url", episode.audio_url)
+                    episode.audio_url = episode_data.get(
+                        "episode_raw_url", episode.audio_url
+                    )
                     if episode_data.get("date"):
                         episode.publication_date = datetime.fromisoformat(
                             episode_data["date"].replace("Z", "+00:00")
@@ -1350,7 +1477,9 @@ async def fetch_episode_details(podcast_id: int, episode_id: int, db: AsyncSessi
 
 @app.get("/api/podcast/{podcast_id}/episode/{episode_id}/description")
 async def get_episode_description(
-    podcast_id: int = Path(...), episode_id: str = Path(...), db: AsyncSession = Depends(get_db)
+    podcast_id: int = Path(...),
+    episode_id: str = Path(...),
+    db: AsyncSession = Depends(get_db),
 ):
     """Recupera la descrizione di un singolo episodio."""
     try:
@@ -1367,19 +1496,27 @@ async def get_episode_description(
 
         # Se non lo troviamo nel database o non ha descrizione, lo recuperiamo dall'API
         await api_rate_limiter.wait()
-        if episode_details := await fetch_episode_details(podcast_id, int(episode_id), db=db):
+        if episode_details := await fetch_episode_details(
+            podcast_id, int(episode_id), db=db
+        ):
             # Estraiamo i dati secondo lo schema API_PODCAST_EPISODE
             episode_data = episode_details.get("data", {})
-            description = episode_data.get("content_html", "") or episode_data.get("summary", "")
+            description = episode_data.get("content_html", "") or episode_data.get(
+                "summary", ""
+            )
 
-            return {"description": clean_html_text(description), "content_html": description}
+            return {
+                "description": clean_html_text(description),
+                "content_html": description,
+            }
 
         # Se non abbiamo trovato nulla, restituiamo una descrizione vuota
         return {"description": "", "content_html": ""}
 
     except Exception as e:
         logger.error(
-            f"Errore nel recupero descrizione episodio {episode_id}: {str(e)}", exc_info=True
+            f"Errore nel recupero descrizione episodio {episode_id}: {str(e)}",
+            exc_info=True,
         )
         raise HTTPException(
             status_code=500,
@@ -1392,7 +1529,9 @@ async def get_episode_description(
 
 @app.post("/api/podcast/{podcast_id}/episode/{episode_id}/refresh")
 async def refresh_episode(
-    podcast_id: int = Path(...), episode_id: str = Path(...), db: AsyncSession = Depends(get_db)
+    podcast_id: int = Path(...),
+    episode_id: str = Path(...),
+    db: AsyncSession = Depends(get_db),
 ):
     """Forza il refresh delle informazioni di un episodio dal backend."""
     try:
@@ -1408,7 +1547,9 @@ async def refresh_episode(
 
         # Recuperiamo i nuovi dati dall'API
         await api_rate_limiter.wait()
-        episode_details = await fetch_episode_details(podcast_id, int(episode_id), db=db)
+        episode_details = await fetch_episode_details(
+            podcast_id, int(episode_id), db=db
+        )
 
         if not episode_details:
             raise HTTPException(status_code=404, detail="Episodio non trovato")
@@ -1417,7 +1558,8 @@ async def refresh_episode(
 
     except Exception as e:
         logger.error(
-            f"Errore nell'aggiornamento dell'episodio {episode_id}: {str(e)}", exc_info=True
+            f"Errore nell'aggiornamento dell'episodio {episode_id}: {str(e)}",
+            exc_info=True,
         )
         raise HTTPException(
             status_code=500,
@@ -1426,3 +1568,230 @@ async def refresh_episode(
                 "error": str(e),
             },
         )
+
+
+@app.post("/api/podcast/{podcast_id}/update", response_class=JSONResponse)
+async def update_podcast(
+    podcast_id: int = Path(...),
+    db: AsyncSession = Depends(get_db),
+):
+    """Forza l'aggiornamento di un podcast specifico."""
+    try:
+        # Invalidiamo la cache per questo podcast
+        stmt = select(Podcast).where(Podcast.ilpost_id == str(podcast_id))
+        result = await db.execute(stmt)
+        podcast = result.scalar_one_or_none()
+
+        if podcast:
+            # Forziamo il refresh impostando last_checked a None
+            podcast.last_checked = None
+            await db.commit()
+
+        # Recuperiamo i nuovi dati dall'API usando il metodo che recupera tutti gli episodi
+        await api_rate_limiter.wait()
+        response = await fetch_all_episodes(podcast_id, batch_size=500)
+
+        if not response or "data" not in response:
+            raise HTTPException(
+                status_code=404, detail="Nessun episodio trovato per questo podcast"
+            )
+
+        podcast_data = response["data"]
+
+        # Otteniamo o creiamo il podcast
+        podcast = await get_or_create_podcast(db, str(podcast_id), podcast_data[0])
+        if not podcast:
+            raise HTTPException(
+                status_code=404, detail="Impossibile creare o recuperare il podcast"
+            )
+
+        # Salviamo gli episodi
+        await save_episodes(db, podcast, podcast_data)
+        await update_podcast_check_time(db, podcast)
+
+        # Rileggiamo gli episodi dal database
+        episodes, _ = await get_podcast_episodes(db, podcast_id)
+
+        # Ordiniamo gli episodi per data di pubblicazione (più recenti prima)
+        episodes.sort(key=lambda x: x.publication_date or datetime.min, reverse=True)
+
+        # Serializziamo gli episodi
+        serialized_episodes = []
+        for episode in episodes:
+            episode_dict = {
+                "id": episode.id,
+                "ilpost_id": episode.ilpost_id,
+                "title": clean_html_text(episode.title),
+                "description": clean_html_text(episode.description),
+                "content_html": episode.description,
+                "episode_raw_url": episode.audio_url,
+                "audio_url": episode.audio_url,
+                "date": (
+                    episode.publication_date.isoformat()
+                    if episode.publication_date
+                    else None
+                ),
+                "milliseconds": (episode.duration * 1000 if episode.duration else None),
+                "duration": format_duration(
+                    episode.duration * 1000 if episode.duration else None
+                ),
+            }
+            serialized_episodes.append(episode_dict)
+
+        return JSONResponse({"success": True, "episodes": serialized_episodes})
+    except Exception as e:
+        logger.error(f"Error updating podcast {podcast_id}: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "message": f"Error updating podcast {podcast_id}",
+                "error": str(e),
+            },
+        )
+
+
+# Aggiungiamo le funzioni ai filtri di Jinja2
+templates.env.filters.update(
+    {
+        "formatDateMain": format_date_main,
+        "formatDateYear": format_date_year,
+        "formatDateTime": format_date_time,
+        "escapejs": escapejs,
+        "clean_text": clean_html_text,
+        "format_duration": format_duration,
+    }
+)
+
+
+async def check_updates_from_bff():
+    """Controlla gli aggiornamenti usando l'endpoint BFF Homepage.
+    Restituisce un dizionario con gli ID dei podcast e le date degli ultimi episodi."""
+    token = get_cached_token()
+    headers = {"Apikey": "testapikey", "Token": token}
+
+    try:
+        async with httpx.AsyncClient(verify=False, timeout=30.0) as client:
+            response = await client.get(
+                "https://api-prod.ilpost.it/podcast/v1/bff/hp", headers=headers
+            )
+            response.raise_for_status()
+            data = response.json()
+
+            # Dizionario per tenere traccia dell'ultimo episodio per ogni podcast
+            latest_episodes = {}
+
+            if "data" in data:
+                for component in data["data"]:
+                    if "data" in component:
+                        for episode in component["data"]:
+                            if "parent" in episode and "id" in episode["parent"]:
+                                podcast_id = episode["parent"]["id"]
+                                episode_date = episode.get("date")
+
+                                # Aggiorniamo solo se questa è la data più recente per questo podcast
+                                if podcast_id not in latest_episodes or (
+                                    episode_date
+                                    and (
+                                        not latest_episodes[podcast_id]
+                                        or episode_date
+                                        > latest_episodes[podcast_id]["date"]
+                                    )
+                                ):
+                                    latest_episodes[podcast_id] = {
+                                        "date": episode_date,
+                                        "title": episode["parent"].get("title"),
+                                        "last_episode_title": episode.get("title"),
+                                        "last_episode_duration": episode.get(
+                                            "milliseconds"
+                                        ),
+                                    }
+
+            return latest_episodes
+    except Exception as e:
+        logger.error(f"Errore nel controllo degli aggiornamenti BFF: {str(e)}")
+        return {}
+
+
+async def update_podcast_directory_cache():
+    """Aggiorna la cache della directory dei podcast usando le informazioni dal BFF."""
+    try:
+        # Otteniamo gli ultimi aggiornamenti dal BFF
+        latest_updates = await check_updates_from_bff()
+
+        if not latest_updates:
+            logger.warning("Nessun aggiornamento trovato dal BFF")
+            return False
+
+        # Recuperiamo la cache corrente
+        current_time = datetime.now().timestamp()
+        needs_full_update = True
+
+        if "directory" in PODCASTS_CACHE:
+            cached_data, cache_time = PODCASTS_CACHE["directory"]
+            podcast_list = cached_data
+            needs_full_update = False
+
+            # Aggiorniamo solo i podcast che hanno nuovi episodi
+            for podcast in podcast_list:
+                podcast_id = podcast["id"]
+                if podcast_id in latest_updates:
+                    latest = latest_updates[podcast_id]
+                    current_date = podcast.get("last_episode_date")
+
+                    if not current_date or latest["date"] > current_date:
+                        logger.info(
+                            f"Aggiornamento podcast {podcast['title']} con nuovo episodio"
+                        )
+                        podcast.update(
+                            {
+                                "last_episode_date": latest["date"],
+                                "last_episode_title": clean_html_text(
+                                    latest["last_episode_title"]
+                                ),
+                                "last_episode_duration": format_duration(
+                                    latest["last_episode_duration"]
+                                ),
+                            }
+                        )
+        else:
+            # Se non abbiamo cache, dobbiamo fare un aggiornamento completo
+            podcasts = await fetch_podcasts(page=1, hits=100)
+            podcast_list = []
+
+            for podcast in podcasts["data"]:
+                latest = latest_updates.get(podcast["id"], {})
+                podcast_data = {
+                    "id": podcast["id"],
+                    "title": clean_html_text(podcast["title"]),
+                    "image": podcast["image"],
+                    "description": clean_html_text(podcast["description"]),
+                    "author": clean_html_text(podcast["author"]),
+                    "rss_url": f"/podcast/{podcast['id']}/rss",
+                    "slug": podcast["slug"],
+                    "last_episode_date": latest.get("date"),
+                    "last_episode_title": clean_html_text(
+                        latest.get("last_episode_title", "")
+                    ),
+                    "last_episode_duration": format_duration(
+                        latest.get("last_episode_duration")
+                    ),
+                }
+                podcast_list.append(podcast_data)
+
+        # Ordiniamo i podcast per data dell'ultimo episodio
+        podcast_list.sort(
+            key=lambda x: (
+                x["last_episode_date"]
+                if x["last_episode_date"]
+                else "1970-01-01T00:00:00+00:00"
+            ),
+            reverse=True,
+        )
+
+        # Aggiorniamo la cache
+        PODCASTS_CACHE["directory"] = (podcast_list, current_time)
+
+        return True
+    except Exception as e:
+        logger.error(f"Errore nell'aggiornamento della directory: {str(e)}")
+        return False

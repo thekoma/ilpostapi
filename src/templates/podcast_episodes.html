@@ -3,160 +3,27 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="service-worker-path" content="{{ url_for('static', path='/js/player-sw.js') }}">
     <title>{{ podcast.title }} - Episodi - Il Post</title>
     <link rel="icon" type="image/svg+xml" href="{{ url_for('static', path='/images/favicon.svg') }}">
     <link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:ital,wght@0,400;0,600;1,400&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', path='/css/styles.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', path='/css/loading.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', path='/css/player.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', path='/css/episodes.css') }}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css">
     <style>
         :root {
             --podcast-cover: url("{{ podcast.image }}");
         }
-
-        .episode-title {
-            font-size: 1.1em;
-            font-weight: 600;
-            margin-bottom: 0.5em;
-            color: var(--text);
-        }
-
-        .episode-description {
-            font-size: 0.9em;
-            color: var(--subtext);
-            margin: 0.5em 0;
-            line-height: 1.4;
-            max-height: 4.2em;  /* 3 linee di testo */
-            overflow: hidden;
-            position: relative;
-            transition: max-height 0.3s ease-out;
-        }
-
-        .episode-description.expanded {
-            max-height: none;
-        }
-
-        .episode-description:not(.expanded)::after {
-            content: '';
-            position: absolute;
-            bottom: 0;
-            right: 0;
-            width: 100%;
-            height: 1.4em;
-            background: linear-gradient(transparent, var(--base));
-        }
-
-        .episode-description p {
-            margin: 0.5em 0;
-        }
-
-        .episode-description a {
-            color: var(--accent);
-            text-decoration: none;
-        }
-
-        .episode-description a:hover {
-            text-decoration: underline;
-        }
-
-        .show-more {
-            font-size: 0.8em;
-            color: var(--accent);
-            cursor: pointer;
-            margin-top: 0.2em;
-            display: inline-block;
-        }
-
-        .show-more:hover {
-            text-decoration: underline;
-        }
-
-        .show-description-button {
-            background: none;
-            border: none;
-            color: var(--accent);
-            cursor: pointer;
-            padding: 4px 8px;
-            margin: 4px 0;
-            border-radius: 4px;
-            transition: background-color 0.2s;
-        }
-
-        .show-description-button:hover {
-            background-color: var(--surface2);
-        }
-
-        .show-description-button:disabled {
-            cursor: wait;
-            opacity: 0.7;
-        }
-
-        .episode-description {
-            margin-top: 8px;
-            padding: 8px;
-            background-color: var(--surface0);
-            border-radius: 4px;
-            font-size: 0.9em;
-            color: var(--subtext);
-            line-height: 1.4;
-            max-height: 4.2em;
-            overflow: hidden;
-            position: relative;
-            transition: max-height 0.3s ease-out;
-        }
-
-        .episode-description.expanded {
-            max-height: none;
-        }
-
-        .episode-description:not(.expanded)::after {
-            content: '';
-            position: absolute;
-            bottom: 0;
-            right: 0;
-            width: 100%;
-            height: 1.4em;
-            background: linear-gradient(transparent, var(--surface0));
-        }
-
-        .date-cell {
-            display: flex;
-            flex-direction: column;
-            gap: 4px;
-        }
-
-        .date-main {
-            font-size: 1.1em;
-            font-weight: 500;
-            display: flex;
-            align-items: center;
-            gap: 6px;
-        }
-
-        .date-main i {
-            color: var(--accent);
-            font-size: 0.9em;
-        }
-
-        .date-year {
-            color: var(--subtext);
-            font-size: 0.9em;
-        }
-
-        .date-time {
-            font-size: 0.85em;
-            color: var(--subtext);
-            display: flex;
-            align-items: center;
-            gap: 6px;
-        }
-
-        .date-time i {
-            font-size: 0.9em;
-        }
     </style>
-    <!-- comment -->
 </head>
-<body class="podcast-episodes-page">
+<body class="podcast-episodes-page" data-podcast-id="{{ podcast.id }}" data-needs-update="{{ pagination.needs_update|tojson }}">
+    <div class="loading-container">
+        <div class="loading-bar"></div>
+        <div class="loading-text">Caricamento episodi in corso...</div>
+    </div>
+
     <header>
         <div class="container">
             <h1>
@@ -179,61 +46,110 @@
     </header>
 
     <main class="container">
+        {% if pagination.total_pages > 1 %}
+        <div class="pagination">
+            <div class="pagination-info">{{ (pagination.current_page - 1) * pagination.per_page + 1 }}-{{ min(pagination.current_page * pagination.per_page, pagination.total_episodes) }} di {{ pagination.total_episodes }}</div>
+
+            <div class="pagination-controls">
+                {% if pagination.has_prev %}
+                <a href="?page={{ pagination.current_page - 1 }}&per_page={{ pagination.per_page }}" class="page-button" title="Pagina precedente">
+                    <i class="fas fa-chevron-left"></i>
+                </a>
+                {% endif %}
+
+                {% for page in pagination.pages %}
+                    {% if page == "..." %}
+                        <button class="page-button page-dots" onclick="showPageSelector(this)" title="Scegli pagina">
+                            <i class="fas fa-ellipsis-h"></i>
+                            <div class="page-selector">
+                                {% for i in range(pagination.pages[loop.index0 - 1] + 1, pagination.pages[loop.index0 + 1]) %}
+                                    <a href="?page={{ i }}&per_page={{ pagination.per_page }}"
+                                       class="page-option {% if i == pagination.current_page %}active{% endif %}">
+                                        {{ i }}
+                                    </a>
+                                {% endfor %}
+                            </div>
+                        </button>
+                    {% else %}
+                        <a href="?page={{ page }}&per_page={{ pagination.per_page }}"
+                           class="page-button {% if page == pagination.current_page %}active{% endif %}">
+                            {{ page }}
+                        </a>
+                    {% endif %}
+                {% endfor %}
+
+                {% if pagination.has_next %}
+                <a href="?page={{ pagination.current_page + 1 }}&per_page={{ pagination.per_page }}" class="page-button" title="Pagina successiva">
+                    <i class="fas fa-chevron-right"></i>
+                </a>
+                {% endif %}
+            </div>
+
+            <div class="per-page-selector">
+                <select id="per-page-bottom" onchange="changePerPage(this.value)">
+                    {% for n in [10, 20, 50, 100] %}
+                    <option value="{{ n }}" {% if n == pagination.per_page %}selected{% endif %}>{{ n }} per pagina</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+        {% endif %}
+
         <div class="episodes-table">
             <table>
                 <thead>
                     <tr>
-                        <th>Episodio</th>
-                        <th>Data</th>
-                        <th>Durata</th>
-                        <th>Azioni</th>
+                        <th class="episode-cell">Episodio</th>
+                        <th class="date-cell">Data</th>
+                        <th class="duration-cell">Durata</th>
+                        <th class="actions-cell">Azioni</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for episode in episodes %}
                     <tr>
-                        <td>
-                            <div class="episode-title">{{ episode.title }}</div>
-                            <button class="show-description-button"
-                                    onclick="loadDescription('{{ podcast.id }}', '{{ episode.ilpost_id }}', this)"
-                                    title="Mostra descrizione">
-                                <i class="fas fa-info-circle"></i>
-                            </button>
-                            <button class="show-description-button"
-                                    onclick="refreshEpisode('{{ podcast.id }}', '{{ episode.ilpost_id }}', this)"
-                                    title="Aggiorna informazioni episodio">
-                                <i class="fas fa-sync-alt"></i>
-                            </button>
+                        <td class="episode-cell">
+                            <div class="episode-title-row">
+                                <button class="episode-expand-button" onclick="toggleDescription(this)" title="Espandi/Comprimi">
+                                    <i class="fas fa-chevron-down"></i>
+                                </button>
+                                <div class="episode-title" data-episode-id="{{ episode.ilpost_id }}">{{ episode.title }}</div>
+                            </div>
                             <div class="episode-description" style="display: none;"></div>
                         </td>
-                        <td>
-                            <div class="date-cell">
-                                <div class="date-main">
-                                    <i class="fas fa-calendar-day"></i>
-                                    <span>{{ formatDateMain(episode.date) }}</span>
-                                    <span class="date-year">{{ formatDateYear(episode.date) }}</span>
-                                </div>
-                                <div class="date-time">
-                                    <i class="fas fa-clock"></i>
-                                    <span>{{ formatDateTime(episode.date) }}</span>
-                                </div>
+                        <td class="date-cell">
+                            <div class="date-main">
+                                <i class="fas fa-calendar"></i>
+                                {{ episode.date|formatDateMain }}
+                                <span class="date-year">{{ episode.date|formatDateYear }}</span>
+                            </div>
+                            <div class="date-time">
+                                <i class="fas fa-clock"></i>
+                                {{ episode.date|formatDateTime }}
                             </div>
                         </td>
-                        <td>{{ episode.duration }}</td>
-                        <td class="actions">
-                            <button class="play-button"
-                                    data-audio="{{ episode.episode_raw_url }}"
-                                    data-podcast-id="{{ podcast.id }}"
-                                    data-podcast-image="{{ podcast.image }}"
-                                    title="Riproduci episodio">
-                                <i class="fas fa-play"></i>
-                            </button>
-                            <a href="{{ episode.episode_raw_url }}"
-                               class="download-button"
-                               download
-                               title="Scarica episodio">
-                                <i class="fas fa-download"></i>
-                            </a>
+                        <td class="duration-cell">{{ episode.duration }}</td>
+                        <td class="actions-cell">
+                            <div class="actions">
+                                <button class="refresh-button"
+                                        onclick="refreshEpisode('{{ podcast.id }}', '{{ episode.ilpost_id }}', this)"
+                                        title="Aggiorna i dati di questo episodio">
+                                    <i class="fas fa-sync-alt"></i>
+                                </button>
+                                <button class="play-button"
+                                        data-audio="{{ episode.episode_raw_url }}"
+                                        data-podcast-id="{{ podcast.id }}"
+                                        data-podcast-image="{{ podcast.image }}"
+                                        title="Riproduci questo episodio">
+                                    <i class="fas fa-play"></i>
+                                </button>
+                                <a href="{{ episode.episode_raw_url }}"
+                                   class="download-button"
+                                   title="Scarica questo episodio in formato MP3"
+                                   download>
+                                    <i class="fas fa-download"></i>
+                                </a>
+                            </div>
                         </td>
                     </tr>
                     {% endfor %}
@@ -267,47 +183,59 @@
                     <div class="now-playing">
                         <span id="now-playing-title"></span>
                     </div>
+                    <div id="episode-description-player" class="episode-description-player"></div>
                 </div>
             </div>
         </div>
 
+        {% if pagination.total_pages > 1 %}
         <div class="pagination">
-            <div class="pagination-info">
-                Mostrando {{ (pagination.current_page - 1) * pagination.per_page + 1 }} -
-                {{ min(pagination.current_page * pagination.per_page, pagination.total_episodes) }}
-                di {{ pagination.total_episodes }} episodi
-            </div>
+            <div class="pagination-info">{{ (pagination.current_page - 1) * pagination.per_page + 1 }}-{{ min(pagination.current_page * pagination.per_page, pagination.total_episodes) }} di {{ pagination.total_episodes }}</div>
+
             <div class="pagination-controls">
                 {% if pagination.has_prev %}
-                <a href="?page={{ pagination.current_page - 1 }}&per_page={{ pagination.per_page }}"
-                   class="page-button">
+                <a href="?page={{ pagination.current_page - 1 }}&per_page={{ pagination.per_page }}" class="page-button" title="Pagina precedente">
                     <i class="fas fa-chevron-left"></i>
                 </a>
                 {% endif %}
 
-                {% for p in pagination.pages %}
-                <a href="?page={{ p }}&per_page={{ pagination.per_page }}"
-                   class="page-button {% if p == pagination.current_page %}active{% endif %}">
-                    {{ p }}
-                </a>
+                {% for page in pagination.pages %}
+                    {% if page == "..." %}
+                        <button class="page-button page-dots" onclick="showPageSelector(this)" title="Scegli pagina">
+                            <i class="fas fa-ellipsis-h"></i>
+                            <div class="page-selector">
+                                {% for i in range(pagination.pages[loop.index0 - 1] + 1, pagination.pages[loop.index0 + 1]) %}
+                                    <a href="?page={{ i }}&per_page={{ pagination.per_page }}"
+                                       class="page-option {% if i == pagination.current_page %}active{% endif %}">
+                                        {{ i }}
+                                    </a>
+                                {% endfor %}
+                            </div>
+                        </button>
+                    {% else %}
+                        <a href="?page={{ page }}&per_page={{ pagination.per_page }}"
+                           class="page-button {% if page == pagination.current_page %}active{% endif %}">
+                            {{ page }}
+                        </a>
+                    {% endif %}
                 {% endfor %}
 
                 {% if pagination.has_next %}
-                <a href="?page={{ pagination.current_page + 1 }}&per_page={{ pagination.per_page }}"
-                   class="page-button">
+                <a href="?page={{ pagination.current_page + 1 }}&per_page={{ pagination.per_page }}" class="page-button" title="Pagina successiva">
                     <i class="fas fa-chevron-right"></i>
                 </a>
                 {% endif %}
             </div>
+
             <div class="per-page-selector">
-                <label for="per-page">Episodi per pagina:</label>
-                <select id="per-page" onchange="changePerPage(this.value)">
+                <select id="per-page-bottom" onchange="changePerPage(this.value)">
                     {% for n in [10, 20, 50, 100] %}
-                    <option value="{{ n }}" {% if n == pagination.per_page %}selected{% endif %}>{{ n }}</option>
+                    <option value="{{ n }}" {% if n == pagination.per_page %}selected{% endif %}>{{ n }} per pagina</option>
                     {% endfor %}
                 </select>
             </div>
         </div>
+        {% endif %}
     </main>
 
     <footer>
@@ -325,165 +253,9 @@
         </select>
     </div>
 
+    <script src="{{ url_for('static', path='/js/loading.js') }}"></script>
     <script src="{{ url_for('static', path='/js/player.js') }}"></script>
-
-    <script>
-        function changePerPage(value) {
-            window.location.href = `?page=1&per_page=${value}`;
-        }
-
-        // Carica il tema salvato o usa il default
-        document.addEventListener('DOMContentLoaded', function() {
-            const savedTheme = getCookie('theme') || 'macchiato';
-            document.documentElement.setAttribute('data-theme', savedTheme);
-            document.getElementById('theme-select').value = savedTheme;
-        });
-
-        function changeTheme(theme) {
-            document.documentElement.setAttribute('data-theme', theme);
-            setCookie('theme', theme, 365);
-        }
-
-        // Funzioni per i cookie
-        function setCookie(name, value, days) {
-            const expires = new Date();
-            expires.setTime(expires.getTime() + (days * 24 * 60 * 60 * 1000));
-            document.cookie = `${name}=${value};expires=${expires.toUTCString()};path=/`;
-        }
-
-        function getCookie(name) {
-            const value = `; ${document.cookie}`;
-            const parts = value.split(`; ${name}=`);
-            if (parts.length === 2) return parts.pop().split(';').shift();
-            return null;
-        }
-
-        function togglePlayer(button) {
-            const player = document.getElementById('audio-player');
-            player.classList.toggle('minimized');
-            button.querySelector('i').classList.toggle('fa-chevron-up');
-            button.querySelector('i').classList.toggle('fa-chevron-down');
-        }
-
-        // Aggiungiamo la funzione per espandere/contrarre la descrizione
-        document.addEventListener('DOMContentLoaded', function() {
-            const descriptions = document.querySelectorAll('.episode-description');
-            descriptions.forEach(desc => {
-                if (desc.scrollHeight > desc.clientHeight) {
-                    const showMore = document.createElement('span');
-                    showMore.className = 'show-more';
-                    showMore.textContent = 'Mostra tutto';
-                    showMore.onclick = function() {
-                        desc.classList.toggle('expanded');
-                        showMore.textContent = desc.classList.contains('expanded') ? 'Mostra meno' : 'Mostra tutto';
-                    };
-                    desc.parentNode.insertBefore(showMore, desc.nextSibling);
-                }
-            });
-        });
-
-        async function loadDescription(podcastId, episodeId, button) {
-            // Troviamo il div della descrizione cercando il prossimo elemento con classe episode-description
-            const descriptionDiv = button.parentElement.querySelector('.episode-description');
-
-            // Se la descrizione è già caricata, la mostriamo/nascondiamo
-            if (descriptionDiv.innerHTML.trim()) {
-                descriptionDiv.style.display = descriptionDiv.style.display === 'none' ? 'block' : 'none';
-                return;
-            }
-
-            // Altrimenti, la carichiamo dall'API
-            try {
-                button.disabled = true;
-                button.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
-
-                const response = await fetch(`/api/podcast/${podcastId}/episode/${episodeId}/description`);
-                if (!response.ok) throw new Error('Errore nel caricamento della descrizione');
-
-                const data = await response.json();
-                descriptionDiv.innerHTML = data.content_html;
-                descriptionDiv.style.display = 'block';
-
-                // Aggiungiamo il pulsante "Mostra tutto" se necessario
-                if (descriptionDiv.scrollHeight > descriptionDiv.clientHeight) {
-                    const showMore = document.createElement('span');
-                    showMore.className = 'show-more';
-                    showMore.textContent = 'Mostra tutto';
-                    showMore.onclick = function() {
-                        descriptionDiv.classList.toggle('expanded');
-                        showMore.textContent = descriptionDiv.classList.contains('expanded') ? 'Mostra meno' : 'Mostra tutto';
-                    };
-                    descriptionDiv.parentNode.insertBefore(showMore, descriptionDiv.nextSibling);
-                }
-            } catch (error) {
-                console.error('Errore:', error);
-                descriptionDiv.innerHTML = '<em>Errore nel caricamento della descrizione</em>';
-                descriptionDiv.style.display = 'block';
-            } finally {
-                button.disabled = false;
-                button.innerHTML = '<i class="fas fa-info-circle"></i>';
-            }
-        }
-
-        // Aggiungiamo la funzione per il refresh dell'episodio
-        async function refreshEpisode(podcastId, episodeId, button) {
-            try {
-                button.disabled = true;
-                button.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
-
-                const response = await fetch(`/api/podcast/${podcastId}/episode/${episodeId}/refresh`, {
-                    method: 'POST'
-                });
-
-                if (!response.ok) throw new Error('Errore nel refresh dell\'episodio');
-
-                // Ricarica la pagina per mostrare i dati aggiornati
-                window.location.reload();
-
-            } catch (error) {
-                console.error('Errore:', error);
-                alert('Errore nell\'aggiornamento dell\'episodio');
-            } finally {
-                button.disabled = false;
-                button.innerHTML = '<i class="fas fa-sync-alt"></i>';
-            }
-        }
-
-        // Funzione per formattare la data in modo compatto
-        function formatDate(isoDate) {
-            if (!isoDate) return 'N/D';
-
-            const date = new Date(isoDate);
-            const year = date.getFullYear();
-            const month = String(date.getMonth() + 1).padStart(2, '0');
-            const day = String(date.getDate()).padStart(2, '0');
-            const hours = String(date.getHours()).padStart(2, '0');
-            const minutes = String(date.getMinutes()).padStart(2, '0');
-
-            return `${year}-${month}-${day} ${hours}:${minutes}`;
-        }
-
-        function formatDateMain(isoDate) {
-            if (!isoDate) return 'N/D';
-            const date = new Date(isoDate);
-            const month = String(date.getMonth() + 1).padStart(2, '0');
-            const day = String(date.getDate()).padStart(2, '0');
-            return `${day}/${month}`;
-        }
-
-        function formatDateYear(isoDate) {
-            if (!isoDate) return '';
-            const date = new Date(isoDate);
-            return date.getFullYear();
-        }
-
-        function formatDateTime(isoDate) {
-            if (!isoDate) return '';
-            const date = new Date(isoDate);
-            const hours = String(date.getHours()).padStart(2, '0');
-            const minutes = String(date.getMinutes()).padStart(2, '0');
-            return `${hours}:${minutes}`;
-        }
-    </script>
+    <script src="{{ url_for('static', path='/js/theme.js') }}"></script>
+    <script src="{{ url_for('static', path='/js/episodes.js') }}"></script>
 </body>
 </html>

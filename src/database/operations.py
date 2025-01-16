@@ -70,7 +70,11 @@ async def get_podcast_episodes(
         Tuple[List[Episode], bool]: Lista degli episodi e flag che indica se serve un aggiornamento
     """
     # Prima proviamo a cercare per ID interno
-    stmt = select(Podcast).where(Podcast.id == podcast_id).options(selectinload(Podcast.episodes))
+    stmt = (
+        select(Podcast)
+        .where(Podcast.id == podcast_id)
+        .options(selectinload(Podcast.episodes))
+    )
     result = await db.execute(stmt)
     podcast = result.scalar_one_or_none()
 
@@ -120,25 +124,29 @@ async def save_episodes(
         except (ValueError, KeyError):
             publication_date = datetime.utcnow()
 
+        # Otteniamo la descrizione dal content_html o dalla description
+        description = episode_data.get("content_html", "") or episode_data.get(
+            "description", ""
+        )
+
         if not episode:
             # Creiamo un nuovo episodio
             episode = Episode(
                 ilpost_id=ilpost_id,
                 podcast=podcast,
                 title=episode_data.get("title", ""),
-                description=episode_data.get("description", ""),
-                description_verified=False,  # La descrizione non è verificata finché non abbiamo i dettagli completi
+                description=description,
+                description_verified=True,  # La descrizione è verificata perché viene dal batch
                 audio_url=episode_data.get("episode_raw_url", ""),
                 publication_date=publication_date,
                 duration=episode_data.get("milliseconds", 0) // 1000,
             )
             db.add(episode)
         else:
-            # Aggiorniamo l'episodio esistente ma manteniamo lo stato di verifica della descrizione
+            # Aggiorniamo l'episodio esistente
             episode.title = episode_data.get("title", episode.title)
-            if not episode.description_verified:
-                # Aggiorniamo la descrizione solo se non è stata già verificata
-                episode.description = episode_data.get("description", episode.description)
+            episode.description = description
+            episode.description_verified = True  # Aggiorniamo lo stato di verifica
             episode.audio_url = episode_data.get("episode_raw_url", episode.audio_url)
             episode.publication_date = publication_date
             episode.duration = episode_data.get("milliseconds", 0) // 1000
@@ -146,7 +154,9 @@ async def save_episodes(
     await db.commit()
 
 
-async def get_podcast_by_ilpost_id(db: AsyncSession, ilpost_id: str) -> Optional[Podcast]:
+async def get_podcast_by_ilpost_id(
+    db: AsyncSession, ilpost_id: str
+) -> Optional[Podcast]:
     """
     Recupera un podcast dal database usando l'ID de Il Post.
 
@@ -162,7 +172,9 @@ async def get_podcast_by_ilpost_id(db: AsyncSession, ilpost_id: str) -> Optional
     return result.scalar_one_or_none()
 
 
-async def get_episode_by_ilpost_id(db: AsyncSession, ilpost_id: str) -> Optional[Episode]:
+async def get_episode_by_ilpost_id(
+    db: AsyncSession, ilpost_id: str
+) -> Optional[Episode]:
     """
     Recupera un episodio dal database usando l'ID de Il Post.
 
