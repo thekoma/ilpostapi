@@ -1732,6 +1732,7 @@ async def update_podcast_directory_cache():
             needs_full_update = False
 
             # Aggiorniamo solo i podcast che hanno nuovi episodi
+            podcast_ids_in_cache = {p["id"] for p in podcast_list}
             for podcast in podcast_list:
                 podcast_id = podcast["id"]
                 if podcast_id in latest_updates:
@@ -1753,6 +1754,28 @@ async def update_podcast_directory_cache():
                                 ),
                             }
                         )
+            # --- AGGIUNTA: inserisco i nuovi podcast non presenti in cache ---
+            all_podcasts = await fetch_podcasts(page=1, hits=100)
+            for podcast in all_podcasts["data"]:
+                if podcast["id"] not in podcast_ids_in_cache:
+                    latest = latest_updates.get(podcast["id"], {})
+                    podcast_data = {
+                        "id": podcast["id"],
+                        "title": clean_html_text(podcast["title"]),
+                        "image": podcast["image"],
+                        "description": clean_html_text(podcast["description"]),
+                        "author": clean_html_text(podcast["author"]),
+                        "rss_url": f"/podcast/{podcast['id']}/rss",
+                        "slug": podcast["slug"],
+                        "last_episode_date": latest.get("date"),
+                        "last_episode_title": clean_html_text(
+                            latest.get("last_episode_title", "")
+                        ),
+                        "last_episode_duration": format_duration(
+                            latest.get("last_episode_duration")
+                        ),
+                    }
+                    podcast_list.append(podcast_data)
         else:
             # Se non abbiamo cache, dobbiamo fare un aggiornamento completo
             podcasts = await fetch_podcasts(page=1, hits=100)
