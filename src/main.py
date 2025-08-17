@@ -1738,3 +1738,4 @@ async def update_podcast_directory_cache():
 
 mcp = FastApiMCP(app)
 mcp.mount_http()
+mcp.mount_sse()
