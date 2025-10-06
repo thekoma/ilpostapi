@@ -16,7 +16,7 @@ cachetools = "^6.0.0"
 aiosqlite = "^0.21.0"
 sqlalchemy = {extras = ["asyncio"], version = "^2.0.19"}
 alembic = "^1.11.1"
-python-json-logger = "^3.0.0"
+python-json-logger = "^4.0.0"
 python-multipart = "^0.0.20"
 aiofiles = "^24.0.0"
 httpx = "^0.28.0"
