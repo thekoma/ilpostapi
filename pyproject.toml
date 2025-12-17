@@ -17,7 +17,7 @@ aiosqlite = "^0.22.0"
 sqlalchemy = {extras = ["asyncio"], version = "^2.0.19"}
 alembic = "^1.11.1"
 python-json-logger = "^4.0.0"
-python-multipart = "^0.0.20"
+python-multipart = "^0.0.21"
 aiofiles = "^25.0.0"
 httpx = "^0.28.0"
 fastapi-mcp = "^0.4.0"
