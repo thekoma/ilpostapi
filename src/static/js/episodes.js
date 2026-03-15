@@ -10,8 +10,12 @@ async function refreshEpisode(podcastId, episodeId, button) {
 
         if (!response.ok) throw new Error('Errore nel refresh dell\'episodio');
 
-        // Ricarica la pagina per mostrare i dati aggiornati
-        window.location.reload();
+        // Ricarica il contenuto senza interrompere il player
+        if (window.pjaxReload) {
+            await window.pjaxReload();
+        } else {
+            window.location.reload();
+        }
 
     } catch (error) {
         console.error('Errore:', error);
@@ -78,7 +82,12 @@ async function toggleDescription(button) {
 // Funzione per cambiare il numero di elementi per pagina
 function changePerPage(value) {
     showLoading();
-    window.location.href = `?page=1&per_page=${value}`;
+    const url = `?page=1&per_page=${value}`;
+    if (window.pjaxNavigate) {
+        window.pjaxNavigate(new URL(url, location.href).href);
+    } else {
+        window.location.href = url;
+    }
 }
 
 // Funzioni di utilità per il loading
@@ -126,7 +135,11 @@ async function updateEpisodesInBackground() {
 
         const data = await response.json();
         if (data.success) {
-            window.location.reload();
+            if (window.pjaxReload) {
+                await window.pjaxReload();
+            } else {
+                window.location.reload();
+            }
         }
     } catch (error) {
         console.error('Errore nell\'aggiornamento degli episodi:', error);

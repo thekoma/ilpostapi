@@ -1,0 +1,106 @@
+# values.yaml for bjw-s app-template
+# Usage:
+#   helm repo add bjw-s https://bjw-s-labs.github.io/helm-charts
+#   helm install ilpostapi bjw-s/app-template -f values.yaml
+
+controllers:
+  main:
+    containers:
+      main:
+        image:
+          repository: ghcr.io/thekoma/ilpostapi
+          tag: latest
+          pullPolicy: IfNotPresent
+
+        env:
+          TZ: Europe/Rome
+
+        envFrom:
+          - secretRef:
+              name: ilpost-api-credentials
+          - configMapRef:
+              identifier: config
+
+        probes:
+          liveness:
+            enabled: true
+            custom: true
+            spec:
+              httpGet:
+                path: /healthz
+                port: &port 5000
+              initialDelaySeconds: 10
+              periodSeconds: 15
+              timeoutSeconds: 5
+              failureThreshold: 3
+
+          readiness:
+            enabled: true
+            custom: true
+            spec:
+              httpGet:
+                path: /readyz
+                port: *port
+              initialDelaySeconds: 5
+              periodSeconds: 10
+              timeoutSeconds: 5
+              failureThreshold: 3
+
+          startup:
+            enabled: true
+            custom: true
+            spec:
+              httpGet:
+                path: /healthz
+                port: *port
+              initialDelaySeconds: 3
+              periodSeconds: 3
+              timeoutSeconds: 5
+              failureThreshold: 10
+
+        resources:
+          requests:
+            cpu: 100m
+            memory: 200Mi
+          limits:
+            cpu: 500m
+            memory: 500Mi
+
+    pod:
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: Always
+
+configMaps:
+  config:
+    data:
+      LOG_LEVEL: "INFO"
+      LOG_FORMAT: "JSON"
+      DB_DIR: "/data"
+
+service:
+  main:
+    controller: main
+    ports:
+      http:
+        port: *port
+
+ingress:
+  main:
+    enabled: false
+
+persistence:
+  data:
+    enabled: true
+    type: persistentVolumeClaim
+    accessMode: ReadWriteOnce
+    size: 1Gi
+    globalMounts:
+      - path: /data
+  tmp:
+    enabled: true
+    type: emptyDir
+    globalMounts:
+      - path: /tmp

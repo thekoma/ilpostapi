@@ -1,0 +1,94 @@
+function toggleRssPopup(event, podcastId) {
+    event.preventDefault();
+    event.stopPropagation();
+
+    var popup = document.getElementById('rss-popup');
+    var button = event.currentTarget;
+
+    // If already open for this podcast, close it
+    if (popup.classList.contains('visible') && popup.dataset.podcastId === String(podcastId)) {
+        popup.classList.remove('visible');
+        return;
+    }
+
+    // Update links
+    popup.dataset.podcastId = podcastId;
+    document.getElementById('rss-popup-rss-link').href = '/podcast/' + podcastId + '/rss';
+    document.getElementById('rss-popup-rdf-link').href = '/podcast/' + podcastId + '/rdf';
+
+    // Setup copy buttons
+    var copyRss = document.getElementById('rss-popup-copy-rss');
+    var copyRdf = document.getElementById('rss-popup-copy-rdf');
+
+    copyRss.onclick = function (e) {
+        e.stopPropagation();
+        copyFeedUrl(copyRss, '/podcast/' + podcastId + '/rss');
+    };
+    copyRdf.onclick = function (e) {
+        e.stopPropagation();
+        copyFeedUrl(copyRdf, '/podcast/' + podcastId + '/rdf');
+    };
+
+    // Reset copy button text
+    resetCopyButton(copyRss, 'RSS');
+    resetCopyButton(copyRdf, 'RDF');
+
+    // Position popup above the button
+    var rect = button.getBoundingClientRect();
+    popup.classList.add('visible');
+
+    var popupRect = popup.getBoundingClientRect();
+    var top = rect.top - popupRect.height - 8;
+
+    // If not enough space above, show below
+    if (top < 8) {
+        top = rect.bottom + 8;
+    }
+
+    // Keep within viewport horizontally
+    var left = rect.left;
+    if (left + popupRect.width > window.innerWidth - 8) {
+        left = window.innerWidth - popupRect.width - 8;
+    }
+
+    popup.style.left = left + 'px';
+    popup.style.top = top + 'px';
+}
+
+function resetCopyButton(button, type) {
+    button.querySelector('i').className = 'fas fa-copy';
+    button.classList.remove('copied');
+    // Clear old text nodes and set fresh
+    var icon = button.querySelector('i');
+    button.textContent = '';
+    button.appendChild(icon);
+    button.appendChild(document.createTextNode(' Copia link ' + type));
+}
+
+function copyFeedUrl(button, path) {
+    var url = window.location.origin + path;
+    navigator.clipboard.writeText(url).then(function () {
+        var icon = button.querySelector('i');
+        icon.className = 'fas fa-check';
+        button.classList.add('copied');
+        button.textContent = '';
+        button.appendChild(icon);
+        button.appendChild(document.createTextNode(' Copiato!'));
+        var isRdf = path.indexOf('rdf') !== -1;
+        setTimeout(function () {
+            resetCopyButton(button, isRdf ? 'RDF' : 'RSS');
+        }, 2000);
+    });
+}
+
+document.addEventListener('click', function (e) {
+    if (!e.target.closest('.rss-button') && !e.target.closest('#rss-popup')) {
+        var popup = document.getElementById('rss-popup');
+        if (popup) popup.classList.remove('visible');
+    }
+});
+
+window.addEventListener('scroll', function () {
+    var popup = document.getElementById('rss-popup');
+    if (popup) popup.classList.remove('visible');
+}, { passive: true });
