@@ -18,28 +18,28 @@ build:
           - 'src/**/*.txt'
           - 'src/**/*.yaml'
           - 'src/**/*.yml'
-manifests:
-  kustomize:
-    paths:
-    - deploy/k8s/base
+
 portForward:
 - resourceType: deployment
   resourceName: ilpostapi
   port: 5000
   address: 0.0.0.0
   localPort: 5000
-profiles:
-- name: dev
-  manifests:
-    kustomize:
-      paths:
-      - deploy/k8s/overlays/dev
-  deploy:
-    kubectl: {}
-- name: prod
-  manifests:
-    kustomize:
-      paths:
-      - deploy/k8s/overlays/prod
-  deploy:
-    kubectl: {}
+
+manifests:
+  helm:
+    releases:
+      - name: ilpostapi
+        remoteChart: bjw-s/app-template
+        valuesFiles:
+          - deploy/helm/values.yaml
+        setValueTemplates:
+          controllers.main.containers.main.image.repository: "{{.IMAGE_REPO_ilpostapi}}"
+          controllers.main.containers.main.image.tag: "{{.IMAGE_TAG_ilpostapi}}"
+        createNamespace: true
+deploy:
+  helm:
+    hooks:
+      before:
+        - host:
+            command: ["sh", "deploy/hooks/check-secret.sh"]

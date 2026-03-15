@@ -1,13 +1,13 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from typing import List, Tuple, Optional, Dict, Any
-import logging
 
+from utils.logging import get_logger
 from .models import Podcast, Episode
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 async def get_or_create_podcast(
@@ -28,14 +28,29 @@ async def get_or_create_podcast(
     result = await db.execute(stmt)
     podcast = result.scalar_one_or_none()
 
+    # Dati del podcast dal payload (possono venire dal podcast diretto o dal parent di un episodio)
+    parent = podcast_data.get("parent", podcast_data)
+
     if not podcast:
         podcast = Podcast(
             ilpost_id=ilpost_id,
-            title=podcast_data.get("title", ""),
-            description=podcast_data.get("description", ""),
-            image_url=podcast_data.get("image", ""),
+            title=parent.get("title", ""),
+            description=parent.get("description", ""),
+            image_url=parent.get("image", ""),
+            author=parent.get("author", ""),
+            share_url=parent.get("share_url", ""),
+            slug=parent.get("slug", ""),
         )
         db.add(podcast)
+        await db.commit()
+        await db.refresh(podcast)
+    else:
+        podcast.title = parent.get("title", podcast.title)
+        podcast.description = parent.get("description", podcast.description)
+        podcast.image_url = parent.get("image", podcast.image_url)
+        podcast.author = parent.get("author", podcast.author)
+        podcast.share_url = parent.get("share_url", podcast.share_url)
+        podcast.slug = parent.get("slug", podcast.slug)
         await db.commit()
         await db.refresh(podcast)
 
@@ -50,7 +65,7 @@ async def update_podcast_check_time(db: AsyncSession, podcast: Podcast) -> None:
         db: Sessione del database
         podcast: Istanza del podcast da aggiornare
     """
-    podcast.last_checked = datetime.utcnow()
+    podcast.last_checked = datetime.now(timezone.utc)
     await db.commit()
     await db.refresh(podcast)
 
@@ -92,7 +107,10 @@ async def get_podcast_episodes(
         return [], True
 
     # Se l'ultimo controllo è più vecchio di 1 ora o se è richiesto un aggiornamento
-    if needs_update or (datetime.utcnow() - podcast.last_checked) > timedelta(hours=1):
+    last_checked = podcast.last_checked
+    if last_checked and last_checked.tzinfo is None:
+        last_checked = last_checked.replace(tzinfo=timezone.utc)
+    if needs_update or not last_checked or (datetime.now(timezone.utc) - last_checked) > timedelta(hours=1):
         return podcast.episodes, True
 
     logger.info(
@@ -122,34 +140,40 @@ async def save_episodes(
         try:
             publication_date = datetime.fromisoformat(episode_data["date"])
         except (ValueError, KeyError):
-            publication_date = datetime.utcnow()
+            publication_date = datetime.now(timezone.utc)
 
         # Otteniamo la descrizione dal content_html o dalla description
         description = episode_data.get("content_html", "") or episode_data.get(
             "description", ""
         )
 
+        # Determina il tipo di episodio
+        episode_type = "full"
+        if episode_data.get("special"):
+            episode_type = "bonus"
+
+        # Campi comuni
+        common_fields = dict(
+            title=episode_data.get("title", ""),
+            description=description,
+            summary=episode_data.get("summary", ""),
+            description_verified=True,
+            audio_url=episode_data.get("episode_raw_url", ""),
+            author=episode_data.get("author", ""),
+            image_url=episode_data.get("image", ""),
+            share_url=episode_data.get("share_url", ""),
+            slug=episode_data.get("slug", ""),
+            episode_type=episode_type,
+            publication_date=publication_date,
+            duration=episode_data.get("milliseconds", 0) // 1000,
+        )
+
         if not episode:
-            # Creiamo un nuovo episodio
-            episode = Episode(
-                ilpost_id=ilpost_id,
-                podcast=podcast,
-                title=episode_data.get("title", ""),
-                description=description,
-                description_verified=True,  # La descrizione è verificata perché viene dal batch
-                audio_url=episode_data.get("episode_raw_url", ""),
-                publication_date=publication_date,
-                duration=episode_data.get("milliseconds", 0) // 1000,
-            )
+            episode = Episode(ilpost_id=ilpost_id, podcast=podcast, **common_fields)
             db.add(episode)
         else:
-            # Aggiorniamo l'episodio esistente
-            episode.title = episode_data.get("title", episode.title)
-            episode.description = description
-            episode.description_verified = True  # Aggiorniamo lo stato di verifica
-            episode.audio_url = episode_data.get("episode_raw_url", episode.audio_url)
-            episode.publication_date = publication_date
-            episode.duration = episode_data.get("milliseconds", 0) // 1000
+            for key, value in common_fields.items():
+                setattr(episode, key, value)
 
     await db.commit()
 

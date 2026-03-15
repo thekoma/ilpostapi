@@ -1,19 +1,17 @@
 import asyncio
 import time
-from datetime import datetime, timedelta
-from typing import Optional
-
+from datetime import datetime, timedelta, timezone
 
 class RateLimiter:
     def __init__(self, requests_per_minute: int = 30):
         self.rate = requests_per_minute
         self.tokens = requests_per_minute
-        self.last_update = datetime.utcnow()
+        self.last_update = datetime.now(timezone.utc)
         self._lock = asyncio.Lock()
 
     async def acquire(self) -> bool:
         async with self._lock:
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
             time_passed = (now - self.last_update).total_seconds() / 60.0
             self.tokens = min(self.rate, self.tokens + time_passed * self.rate)
             self.last_update = now
