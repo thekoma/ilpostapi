@@ -264,7 +264,9 @@ class PodcastPlayer {
                     }
 
                     // Riproduci il primo episodio (l'ultimo in ordine cronologico)
+                    this.currentEpisodeIndex = 0;
                     this.playEpisode(episodes[0]);
+                    this.updateControls();
                     return;
                 }
             }
@@ -278,7 +280,9 @@ class PodcastPlayer {
                 return;
             }
 
+            this.currentEpisodeIndex = 0;
             this.playEpisode(episodes[0]);
+            this.updateControls();
         } catch (error) {
             console.error('Error playing latest episode:', error);
             alert('Errore nel caricamento dell\'ultimo episodio. Riprova più tardi.');
