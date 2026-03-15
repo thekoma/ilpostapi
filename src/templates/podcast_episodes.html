@@ -4,8 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="service-worker-path" content="{{ url_for('static', path='/js/player-sw.js') }}">
-    <title>{{ podcast.title }} - Episodi - Il Post</title>
-    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', path='/images/favicon.svg') }}">
+    <title>{{ podcast.title }} - ilPost Podcasts</title>
+    <link rel="icon" type="image/x-icon" href="{{ url_for('static', path='/images/favicon.ico') }}">
+    <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', path='/images/favicon-32x32.png') }}">
+    <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', path='/images/favicon-16x16.png') }}">
+    <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', path='/images/apple-touch-icon.png') }}">
+    <link rel="manifest" href="{{ url_for('static', path='/images/site.webmanifest') }}">
     <link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:ital,wght@0,400;0,600;1,400&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', path='/css/styles.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', path='/css/loading.css') }}">
@@ -19,243 +23,264 @@
     </style>
 </head>
 <body class="podcast-episodes-page" data-podcast-id="{{ podcast.id }}" data-needs-update="{{ pagination.needs_update|tojson }}">
-    <div class="loading-container">
-        <div class="loading-bar"></div>
-        <div class="loading-text">Caricamento episodi in corso...</div>
+    <div id="app-content">
+        <div class="loading-container">
+            <div class="loading-bar"></div>
+            <div class="loading-text">Caricamento episodi in corso...</div>
+        </div>
+
+        <header>
+            <div class="container">
+                <div class="podcast-header-content">
+                    <img src="{{ podcast.image }}" alt="{{ podcast.title }}" class="podcast-header-cover">
+                    <div class="podcast-header-info">
+                        <h1>{{ podcast.title }}</h1>
+                        <p>{{ podcast.description }}</p>
+                        <div class="podcast-meta">
+                            <span><i class="fas fa-microphone"></i> {{ podcast.author }}</span>
+                            <button class="rss-button" onclick="toggleRssPopup(event, {{ podcast.id }})">
+                                <i class="fas fa-rss"></i> Feed
+                            </button>
+                            <a href="/" class="back-button">
+                                <i class="fas fa-arrow-left"></i> Directory
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <main class="container">
+            {% if pagination.total_pages > 1 %}
+            <div class="pagination">
+                <div class="pagination-info">{{ (pagination.current_page - 1) * pagination.per_page + 1 }}-{{ min(pagination.current_page * pagination.per_page, pagination.total_episodes) }} di {{ pagination.total_episodes }}</div>
+
+                <div class="pagination-controls">
+                    {% if pagination.has_prev %}
+                    <a href="?page={{ pagination.current_page - 1 }}&per_page={{ pagination.per_page }}" class="page-button" title="Pagina precedente">
+                        <i class="fas fa-chevron-left"></i>
+                    </a>
+                    {% endif %}
+
+                    {% for page in pagination.pages %}
+                        {% if page == "..." %}
+                            <button class="page-button page-dots" onclick="showPageSelector(this)" title="Scegli pagina">
+                                <i class="fas fa-ellipsis-h"></i>
+                                <div class="page-selector">
+                                    {% for i in range(pagination.pages[loop.index0 - 1] + 1, pagination.pages[loop.index0 + 1]) %}
+                                        <a href="?page={{ i }}&per_page={{ pagination.per_page }}"
+                                           class="page-option {% if i == pagination.current_page %}active{% endif %}">
+                                            {{ i }}
+                                        </a>
+                                    {% endfor %}
+                                </div>
+                            </button>
+                        {% else %}
+                            <a href="?page={{ page }}&per_page={{ pagination.per_page }}"
+                               class="page-button {% if page == pagination.current_page %}active{% endif %}">
+                                {{ page }}
+                            </a>
+                        {% endif %}
+                    {% endfor %}
+
+                    {% if pagination.has_next %}
+                    <a href="?page={{ pagination.current_page + 1 }}&per_page={{ pagination.per_page }}" class="page-button" title="Pagina successiva">
+                        <i class="fas fa-chevron-right"></i>
+                    </a>
+                    {% endif %}
+                </div>
+
+                <div class="per-page-selector">
+                    <select id="per-page-bottom" onchange="changePerPage(this.value)">
+                        {% for n in [10, 20, 50, 100] %}
+                        <option value="{{ n }}" {% if n == pagination.per_page %}selected{% endif %}>{{ n }} per pagina</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            {% endif %}
+
+            <div class="episodes-table">
+                <table>
+                    <thead>
+                        <tr>
+                            <th class="episode-cell">Episodio</th>
+                            <th class="date-cell">Data</th>
+                            <th class="duration-cell">Durata</th>
+                            <th class="actions-cell">Azioni</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for episode in episodes %}
+                        <tr>
+                            <td class="episode-cell">
+                                <div class="episode-title-row">
+                                    <button class="episode-expand-button" onclick="toggleDescription(this)" title="Espandi/Comprimi">
+                                        <i class="fas fa-chevron-down"></i>
+                                    </button>
+                                    <div class="episode-title" data-episode-id="{{ episode.ilpost_id }}">{{ episode.title }}</div>
+                                </div>
+                                <div class="episode-description" style="display: none;"></div>
+                            </td>
+                            <td class="date-cell">
+                                <div class="date-main">
+                                    <i class="fas fa-calendar"></i>
+                                    {{ episode.date|formatDateMain }}
+                                    <span class="date-year">{{ episode.date|formatDateYear }}</span>
+                                </div>
+                                <div class="date-time">
+                                    <i class="fas fa-clock"></i>
+                                    {{ episode.date|formatDateTime }}
+                                </div>
+                            </td>
+                            <td class="duration-cell">{{ episode.duration }}</td>
+                            <td class="actions-cell">
+                                <div class="actions">
+                                    <button class="refresh-button"
+                                            onclick="refreshEpisode('{{ podcast.id }}', '{{ episode.ilpost_id }}', this)"
+                                            title="Aggiorna i dati di questo episodio">
+                                        <i class="fas fa-sync-alt"></i>
+                                    </button>
+                                    <button class="play-button"
+                                            data-audio="{{ episode.episode_raw_url }}"
+                                            data-podcast-id="{{ podcast.id }}"
+                                            data-podcast-image="{{ podcast.image }}"
+                                            title="Riproduci questo episodio">
+                                        <i class="fas fa-play"></i>
+                                    </button>
+                                    <a href="{{ episode.episode_raw_url }}"
+                                       class="download-button"
+                                       title="Scarica questo episodio in formato MP3"
+                                       download>
+                                        <i class="fas fa-download"></i>
+                                    </a>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            {% if pagination.total_pages > 1 %}
+            <div class="pagination">
+                <div class="pagination-info">{{ (pagination.current_page - 1) * pagination.per_page + 1 }}-{{ min(pagination.current_page * pagination.per_page, pagination.total_episodes) }} di {{ pagination.total_episodes }}</div>
+
+                <div class="pagination-controls">
+                    {% if pagination.has_prev %}
+                    <a href="?page={{ pagination.current_page - 1 }}&per_page={{ pagination.per_page }}" class="page-button" title="Pagina precedente">
+                        <i class="fas fa-chevron-left"></i>
+                    </a>
+                    {% endif %}
+
+                    {% for page in pagination.pages %}
+                        {% if page == "..." %}
+                            <button class="page-button page-dots" onclick="showPageSelector(this)" title="Scegli pagina">
+                                <i class="fas fa-ellipsis-h"></i>
+                                <div class="page-selector">
+                                    {% for i in range(pagination.pages[loop.index0 - 1] + 1, pagination.pages[loop.index0 + 1]) %}
+                                        <a href="?page={{ i }}&per_page={{ pagination.per_page }}"
+                                           class="page-option {% if i == pagination.current_page %}active{% endif %}">
+                                            {{ i }}
+                                        </a>
+                                    {% endfor %}
+                                </div>
+                            </button>
+                        {% else %}
+                            <a href="?page={{ page }}&per_page={{ pagination.per_page }}"
+                               class="page-button {% if page == pagination.current_page %}active{% endif %}">
+                                {{ page }}
+                            </a>
+                        {% endif %}
+                    {% endfor %}
+
+                    {% if pagination.has_next %}
+                    <a href="?page={{ pagination.current_page + 1 }}&per_page={{ pagination.per_page }}" class="page-button" title="Pagina successiva">
+                        <i class="fas fa-chevron-right"></i>
+                    </a>
+                    {% endif %}
+                </div>
+
+                <div class="per-page-selector">
+                    <select id="per-page-bottom" onchange="changePerPage(this.value)">
+                        {% for n in [10, 20, 50, 100] %}
+                        <option value="{{ n }}" {% if n == pagination.per_page %}selected{% endif %}>{{ n }} per pagina</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            {% endif %}
+        </main>
+
+        <footer>
+            <div class="container">
+                <p>&copy; {{ year }} Il Post - Tutti i diritti riservati</p>
+            </div>
+        </footer>
+
+        <div class="theme-switcher">
+            <select id="theme-select" onchange="changeTheme(this.value)">
+                <option value="latte">Catppuccin Latte</option>
+                <option value="frappe">Catppuccin Frappé</option>
+                <option value="macchiato">Catppuccin Macchiato</option>
+                <option value="mocha">Catppuccin Mocha</option>
+            </select>
+        </div>
     </div>
 
-    <header>
-        <div class="container">
-            <h1>
-                <div class="header-logo-container">
-                    <img src="{{ url_for('static', path='/images/logo.svg') }}" alt="Il Post" class="header-logo">
+    <div id="rss-popup" class="rss-popup">
+        <a href="#" class="rss-popup-item" id="rss-popup-rss-link">
+            <i class="fas fa-rss"></i> Apri RSS Feed
+        </a>
+        <a href="#" class="rss-popup-item" id="rss-popup-rdf-link">
+            <i class="fas fa-code"></i> Apri RDF Feed
+        </a>
+        <div class="rss-popup-divider"></div>
+        <button class="rss-popup-item rss-popup-copy" id="rss-popup-copy-rss">
+            <i class="fas fa-copy"></i> Copia link RSS
+        </button>
+        <button class="rss-popup-item rss-popup-copy" id="rss-popup-copy-rdf">
+            <i class="fas fa-copy"></i> Copia link RDF
+        </button>
+    </div>
+
+    <div id="audio-player" class="audio-player">
+        <button class="player-close" onclick="closePlayer(this)">
+            <i class="fas fa-times"></i>
+        </button>
+        <button class="player-toggle" onclick="togglePlayer(this)">
+            <i class="fas fa-chevron-down"></i>
+        </button>
+        <div class="player-content">
+            <div class="podcast-thumbnail">
+                <img id="podcast-cover" src="" alt="Copertina podcast">
+            </div>
+            <div class="player-main">
+                <div class="player-controls">
+                    <button id="prev-episode" class="control-button" disabled>
+                        <i class="fas fa-step-backward"></i>
+                    </button>
+                    <audio id="player" controls>
+                        Il tuo browser non supporta l'elemento audio.
+                    </audio>
+                    <button id="next-episode" class="control-button" disabled>
+                        <i class="fas fa-step-forward"></i>
+                    </button>
                 </div>
-                {{ podcast.title }}
-            </h1>
-            <p>{{ podcast.description }}</p>
-            <div class="podcast-meta">
-                <span><i class="fas fa-microphone"></i> {{ podcast.author }}</span>
-                <a href="/podcast/{{ podcast.id }}/rss" class="rss-button">
-                    <i class="fas fa-rss"></i> RSS Feed
-                </a>
-                <a href="/" class="back-button">
-                    <i class="fas fa-arrow-left"></i> Torna alla directory
-                </a>
-            </div>
-        </div>
-    </header>
-
-    <main class="container">
-        {% if pagination.total_pages > 1 %}
-        <div class="pagination">
-            <div class="pagination-info">{{ (pagination.current_page - 1) * pagination.per_page + 1 }}-{{ min(pagination.current_page * pagination.per_page, pagination.total_episodes) }} di {{ pagination.total_episodes }}</div>
-
-            <div class="pagination-controls">
-                {% if pagination.has_prev %}
-                <a href="?page={{ pagination.current_page - 1 }}&per_page={{ pagination.per_page }}" class="page-button" title="Pagina precedente">
-                    <i class="fas fa-chevron-left"></i>
-                </a>
-                {% endif %}
-
-                {% for page in pagination.pages %}
-                    {% if page == "..." %}
-                        <button class="page-button page-dots" onclick="showPageSelector(this)" title="Scegli pagina">
-                            <i class="fas fa-ellipsis-h"></i>
-                            <div class="page-selector">
-                                {% for i in range(pagination.pages[loop.index0 - 1] + 1, pagination.pages[loop.index0 + 1]) %}
-                                    <a href="?page={{ i }}&per_page={{ pagination.per_page }}"
-                                       class="page-option {% if i == pagination.current_page %}active{% endif %}">
-                                        {{ i }}
-                                    </a>
-                                {% endfor %}
-                            </div>
-                        </button>
-                    {% else %}
-                        <a href="?page={{ page }}&per_page={{ pagination.per_page }}"
-                           class="page-button {% if page == pagination.current_page %}active{% endif %}">
-                            {{ page }}
-                        </a>
-                    {% endif %}
-                {% endfor %}
-
-                {% if pagination.has_next %}
-                <a href="?page={{ pagination.current_page + 1 }}&per_page={{ pagination.per_page }}" class="page-button" title="Pagina successiva">
-                    <i class="fas fa-chevron-right"></i>
-                </a>
-                {% endif %}
-            </div>
-
-            <div class="per-page-selector">
-                <select id="per-page-bottom" onchange="changePerPage(this.value)">
-                    {% for n in [10, 20, 50, 100] %}
-                    <option value="{{ n }}" {% if n == pagination.per_page %}selected{% endif %}>{{ n }} per pagina</option>
-                    {% endfor %}
-                </select>
-            </div>
-        </div>
-        {% endif %}
-
-        <div class="episodes-table">
-            <table>
-                <thead>
-                    <tr>
-                        <th class="episode-cell">Episodio</th>
-                        <th class="date-cell">Data</th>
-                        <th class="duration-cell">Durata</th>
-                        <th class="actions-cell">Azioni</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for episode in episodes %}
-                    <tr>
-                        <td class="episode-cell">
-                            <div class="episode-title-row">
-                                <button class="episode-expand-button" onclick="toggleDescription(this)" title="Espandi/Comprimi">
-                                    <i class="fas fa-chevron-down"></i>
-                                </button>
-                                <div class="episode-title" data-episode-id="{{ episode.ilpost_id }}">{{ episode.title }}</div>
-                            </div>
-                            <div class="episode-description" style="display: none;"></div>
-                        </td>
-                        <td class="date-cell">
-                            <div class="date-main">
-                                <i class="fas fa-calendar"></i>
-                                {{ episode.date|formatDateMain }}
-                                <span class="date-year">{{ episode.date|formatDateYear }}</span>
-                            </div>
-                            <div class="date-time">
-                                <i class="fas fa-clock"></i>
-                                {{ episode.date|formatDateTime }}
-                            </div>
-                        </td>
-                        <td class="duration-cell">{{ episode.duration }}</td>
-                        <td class="actions-cell">
-                            <div class="actions">
-                                <button class="refresh-button"
-                                        onclick="refreshEpisode('{{ podcast.id }}', '{{ episode.ilpost_id }}', this)"
-                                        title="Aggiorna i dati di questo episodio">
-                                    <i class="fas fa-sync-alt"></i>
-                                </button>
-                                <button class="play-button"
-                                        data-audio="{{ episode.episode_raw_url }}"
-                                        data-podcast-id="{{ podcast.id }}"
-                                        data-podcast-image="{{ podcast.image }}"
-                                        title="Riproduci questo episodio">
-                                    <i class="fas fa-play"></i>
-                                </button>
-                                <a href="{{ episode.episode_raw_url }}"
-                                   class="download-button"
-                                   title="Scarica questo episodio in formato MP3"
-                                   download>
-                                    <i class="fas fa-download"></i>
-                                </a>
-                            </div>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-
-        <div id="audio-player" class="audio-player">
-            <button class="player-close" onclick="closePlayer(this)">
-                <i class="fas fa-times"></i>
-            </button>
-            <button class="player-toggle" onclick="togglePlayer(this)">
-                <i class="fas fa-chevron-down"></i>
-            </button>
-            <div class="player-content">
-                <div class="podcast-thumbnail">
-                    <img id="podcast-cover" src="" alt="Copertina podcast">
+                <div class="now-playing">
+                    <span id="now-playing-title"></span>
                 </div>
-                <div class="player-main">
-                    <div class="player-controls">
-                        <button id="prev-episode" class="control-button" disabled>
-                            <i class="fas fa-step-backward"></i>
-                        </button>
-                        <audio id="player" controls>
-                            Il tuo browser non supporta l'elemento audio.
-                        </audio>
-                        <button id="next-episode" class="control-button" disabled>
-                            <i class="fas fa-step-forward"></i>
-                        </button>
-                    </div>
-                    <div class="now-playing">
-                        <span id="now-playing-title"></span>
-                    </div>
-                    <div id="episode-description-player" class="episode-description-player"></div>
-                </div>
+                <div id="episode-description-player" class="episode-description-player"></div>
             </div>
         </div>
-
-        {% if pagination.total_pages > 1 %}
-        <div class="pagination">
-            <div class="pagination-info">{{ (pagination.current_page - 1) * pagination.per_page + 1 }}-{{ min(pagination.current_page * pagination.per_page, pagination.total_episodes) }} di {{ pagination.total_episodes }}</div>
-
-            <div class="pagination-controls">
-                {% if pagination.has_prev %}
-                <a href="?page={{ pagination.current_page - 1 }}&per_page={{ pagination.per_page }}" class="page-button" title="Pagina precedente">
-                    <i class="fas fa-chevron-left"></i>
-                </a>
-                {% endif %}
-
-                {% for page in pagination.pages %}
-                    {% if page == "..." %}
-                        <button class="page-button page-dots" onclick="showPageSelector(this)" title="Scegli pagina">
-                            <i class="fas fa-ellipsis-h"></i>
-                            <div class="page-selector">
-                                {% for i in range(pagination.pages[loop.index0 - 1] + 1, pagination.pages[loop.index0 + 1]) %}
-                                    <a href="?page={{ i }}&per_page={{ pagination.per_page }}"
-                                       class="page-option {% if i == pagination.current_page %}active{% endif %}">
-                                        {{ i }}
-                                    </a>
-                                {% endfor %}
-                            </div>
-                        </button>
-                    {% else %}
-                        <a href="?page={{ page }}&per_page={{ pagination.per_page }}"
-                           class="page-button {% if page == pagination.current_page %}active{% endif %}">
-                            {{ page }}
-                        </a>
-                    {% endif %}
-                {% endfor %}
-
-                {% if pagination.has_next %}
-                <a href="?page={{ pagination.current_page + 1 }}&per_page={{ pagination.per_page }}" class="page-button" title="Pagina successiva">
-                    <i class="fas fa-chevron-right"></i>
-                </a>
-                {% endif %}
-            </div>
-
-            <div class="per-page-selector">
-                <select id="per-page-bottom" onchange="changePerPage(this.value)">
-                    {% for n in [10, 20, 50, 100] %}
-                    <option value="{{ n }}" {% if n == pagination.per_page %}selected{% endif %}>{{ n }} per pagina</option>
-                    {% endfor %}
-                </select>
-            </div>
-        </div>
-        {% endif %}
-    </main>
-
-    <footer>
-        <div class="container">
-            <p>© {{ year }} Il Post - Tutti i diritti riservati</p>
-        </div>
-    </footer>
-
-    <div class="theme-switcher">
-        <select id="theme-select" onchange="changeTheme(this.value)">
-            <option value="latte">Catppuccin Latte</option>
-            <option value="frappe">Catppuccin Frappé</option>
-            <option value="macchiato">Catppuccin Macchiato</option>
-            <option value="mocha">Catppuccin Mocha</option>
-        </select>
     </div>
 
     <script src="{{ url_for('static', path='/js/loading.js') }}"></script>
     <script src="{{ url_for('static', path='/js/player.js') }}"></script>
+    <script src="{{ url_for('static', path='/js/search.js') }}"></script>
     <script src="{{ url_for('static', path='/js/theme.js') }}"></script>
     <script src="{{ url_for('static', path='/js/episodes.js') }}"></script>
+    <script src="{{ url_for('static', path='/js/rss-popup.js') }}"></script>
+    <script src="{{ url_for('static', path='/js/navigation.js') }}"></script>
 </body>
 </html>

@@ -61,8 +61,11 @@ class LoadingBar {
 // Create global loading bar instance
 const loadingBar = new LoadingBar();
 
+// Save the original fetch before wrapping (used by navigation.js)
+window._originalFetch = window._originalFetch || window.fetch;
+
 // Intercept fetch requests to show loading bar
-const originalFetch = window.fetch;
+const originalFetch = window._originalFetch;
 window.fetch = function(...args) {
     const requestId = Math.random().toString(36);
     loadingBar.addItem(requestId);

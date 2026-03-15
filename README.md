@@ -1,4 +1,4 @@
-# Il Post Podcast API
+# ilPost Podcasts
 
 [![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/thekoma/ilpostapi/on_tag.yaml?style=flat-square)](https://github.com/thekoma/ilpostapi/actions)
 [![GitHub release (latest by date)](https://img.shields.io/github/v/release/thekoma/ilpostapi?style=flat-square)](https://github.com/thekoma/ilpostapi/releases)
@@ -6,185 +6,114 @@
 [![Docker Image Version](https://img.shields.io/github/v/tag/thekoma/ilpostapi?label=docker%20tag&style=flat-square)](https://github.com/thekoma/ilpostapi/pkgs/container/ilpostapi)
 [![Container Registry](https://img.shields.io/badge/container-ghcr.io-blue?style=flat-square)](https://github.com/thekoma/ilpostapi/pkgs/container/ilpostapi)
 
-Un'interfaccia web elegante per accedere ai podcast de Il Post.
+Un'interfaccia web per accedere ai podcast de Il Post, con feed RSS/RDF e player audio integrato.
 
-![Screenshot dell'interfaccia](images/image.png)
+| Directory (Macchiato) | Directory (Latte) |
+|---|---|
+| ![Directory Macchiato](images/directory-macchiato.png) | ![Directory Latte](images/directory-latte.png) |
+
+| Episodi (Macchiato) | Episodi (Latte) |
+|---|---|
+| ![Episodes Macchiato](images/episodes-macchiato.png) | ![Episodes Latte](images/episodes-latte.png) |
+
+| Feed Popup |
+|---|
+| ![Feed Popup](images/feed-popup.png) |
 
 ## Funzionalità
 
-### 🎧 Interfaccia Web
-- Design moderno con temi Catppuccin (Latte, Frappé, Macchiato, Mocha)
-- Player audio integrato con controlli di navigazione e stato persistente
-- Visualizzazione dettagliata degli episodi con data, durata e descrizione
-- Sfondo dinamico basato sulla copertina del podcast
+### Interfaccia Web
+- Design con temi [Catppuccin](https://github.com/catppuccin/catppuccin) (Latte, Frappe, Macchiato, Mocha)
+- Player audio persistente con navigazione tra episodi (non si interrompe cambiando pagina)
 - Ricerca fuzzy in tempo reale su titoli, descrizioni e autori
-- Refresh individuale degli episodi
-- Cache intelligente con persistenza su database SQLite
-- Player minimizzabile con animazioni fluide
-- Mantenimento dello stato di riproduzione durante la navigazione
-- Sincronizzazione del player tra diverse schede del browser
+- Popup Feed con link RSS/RDF e copia negli appunti
 
-### 📅 Gestione Episodi
-- Visualizzazione ordinata per data di pubblicazione
-- Informazioni dettagliate sull'ultimo episodio (titolo, data e ora di rilascio)
-- Paginazione degli episodi con numero personalizzabile di elementi per pagina
-- Riproduzione diretta degli episodi con player integrato
-- Download diretto dei file audio
-- Gestione della cache con possibilità di refresh manuale
-- Descrizioni espandibili con formattazione HTML preservata
+### Episodi
+- Cover del podcast nell'header con sfondo dinamico blurrato
+- Paginazione con numero personalizzabile di elementi per pagina
+- Descrizioni espandibili con formattazione HTML
+- Riproduzione diretta e download dei file audio
 
-### 🔄 Feed RSS e RDF
-- Feed RSS compatibile con tutti i principali aggregatori
+### Feed RSS e RDF
+- Feed RSS completo compatibile con tutti i principali aggregatori
 - Feed RDF per integrazione con sistemi semantici
-- Metadati completi per ogni episodio
-- Supporto per iTunes/Apple Podcasts
-- URL persistenti per ogni episodio
+- Metadati completi: autore per episodio, immagine per episodio, summary, share URL
+- Supporto iTunes/Apple Podcasts, Google Podcasts, Podcast Index
 
-### ⚡ Performance
-- Caching intelligente delle richieste API (15 minuti)
-- Database SQLite per persistenza dei dati
-- Caricamento asincrono dei dati
-- Rate limiting intelligente per le chiamate API
-- Interfaccia reattiva e fluida
-- Ottimizzazione delle immagini e dei contenuti
-
-### 🎨 Design
-- Font serif per i titoli (Crimson Pro)
-- Font sans-serif per il testo (Inter)
-- Icone Font Awesome per una migliore UX
-- Animazioni fluide e feedback visivo
-- Tema adattivo chiaro/scuro
+### Architettura
+- **FastAPI** con moduli separati (routes, API client, feeds, auth)
+- **SQLite** asincrono via SQLAlchemy per cache persistente
+- **Navigazione pjax** — il player audio sopravvive ai cambi di pagina
+- **Rate limiting** per le chiamate all'API de Il Post
+- **Health checks** reali (`/healthz`, `/readyz`) per Kubernetes
+- **MCP** (Model Context Protocol) endpoint integrato
 
 ## Requisiti
 
 ### Storage
-- L'applicazione richiede un volume persistente montato su `/data` per il database SQLite
-- Dimensione consigliata: minimo 1GB per una cache completa
-- Permessi di scrittura necessari per l'utente dell'applicazione
+- Volume persistente montato su `/data` per il database SQLite
+- Dimensione consigliata: minimo 1GB
+- Permessi di scrittura necessari per UID 1000
 
-## Utilizzo
+## Deploy
 
-### 🚀 Deploy con Helm
+### Helm (bjw-s app-template)
 
-Prima di deployare l'applicazione, è necessario:
+Il chart usa [bjw-s app-template](https://bjw-s-labs.github.io/helm-charts/docs/app-template/).
 
-1. Creare un PersistentVolume e PersistentVolumeClaim per il database:
-
-```yaml
-# pv.yaml
-apiVersion: v1
-kind: PersistentVolume
-metadata:
-  name: ilpostapi-data
-spec:
-  capacity:
-    storage: 1Gi
-  accessModes:
-    - ReadWriteOnce
-  persistentVolumeReclaimPolicy: Retain
-  storageClassName: standard
-  hostPath:
-    path: /data/ilpostapi
----
-# pvc.yaml
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: ilpostapi-data
-spec:
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: 1Gi
-  storageClassName: standard
-```
-
-2. Creare un secret con le credenziali de Il Post:
-
-```yaml
-# secret.yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: ilpostapi
-  labels:
-    group: ilpostapi
-stringData:
-  EMAIL: your-email@domain.com
-  PASSWORD: your-password
-```
-
-In alternativa, puoi creare il secret direttamente da linea di comando:
+1. Creare il secret con le credenziali:
 
 ```bash
-kubectl create secret generic ilpostapi \
+kubectl create secret generic ilpost-api-credentials \
   --namespace ilpostapi \
   --from-literal=EMAIL='your-email@domain.com' \
   --from-literal=PASSWORD='your-password'
 ```
 
-Dopo aver creato le risorse necessarie, puoi procedere con l'installazione usando Helm:
+2. Installare:
 
 ```bash
-helm repo add onechart https://chart.onechart.dev
+helm repo add bjw-s https://bjw-s-labs.github.io/helm-charts
 helm repo update
 
-helm install ilpostapi onechart/onechart \
-  --version 0.73.0 \
+helm install ilpostapi bjw-s/app-template \
   --namespace ilpostapi \
   --create-namespace \
-  --set image.repository=ghcr.io/thekoma/ilpostapi \
-  --set image.tag=latest \
-  --set containerPort=5000 \
-  --set resources.limits.cpu=200m \
-  --set resources.limits.memory=256Mi \
-  --set resources.requests.cpu=100m \
-  --set resources.requests.memory=128Mi \
-  --set container.imagePullPolicy=Always \
-  --set secretName=ilpostapi \
-  --set 'volumes[0].name=data' \
-  --set 'volumes[0].path=/data' \
-  --set 'volumes[0].size=1Gi' \
-  --set 'volumes[0].storageClass=standard'
+  -f deploy/helm/values.yaml
 ```
 
-Per una configurazione più avanzata, usa un file `values.yaml`:
+Per abilitare l'ingress o personalizzare, crea un file `my-values.yaml`:
 
 ```yaml
-resources:
-  limits:
-    cpu: "200m"
-    memory: "256Mi"
-  requests:
-    cpu: "100m"
-    memory: "128Mi"
-containerPort: 5000
-container:
-  imagePullPolicy: Always
-imagePullSecrets:
-  - regcred
-image:
-  repository: ghcr.io/thekoma/ilpostapi
-  tag: latest
-secretName: ilpostapi
-volumes:
-  - name: data
-    path: /data
-    size: 1Gi
-    storageClass: standard
-ingresses:
-  - host: ilpostapi.yourdomain
-    tlsEnabled: true
-    tlsSecretName: ilpostapi-ingress-cloudflare-tls
+ingress:
+  main:
+    enabled: true
+    className: nginx
+    hosts:
+      - host: ilpostapi.yourdomain.com
+        paths:
+          - path: /
+            pathType: Prefix
+            service:
+              identifier: main
+              port: http
+    tls:
+      - secretName: ilpostapi-tls
+        hosts:
+          - ilpostapi.yourdomain.com
 ```
 
-### 🐳 Deploy con Docker Compose
+```bash
+helm install ilpostapi bjw-s/app-template \
+  --namespace ilpostapi \
+  --create-namespace \
+  -f deploy/helm/values.yaml \
+  -f my-values.yaml
+```
 
-Per un deploy locale o di sviluppo, usa Docker Compose. Crea un file `docker-compose.yaml`:
+### Docker Compose
 
 ```yaml
-version: '3.8'
 services:
   ilpostapi:
     image: ghcr.io/thekoma/ilpostapi:latest
@@ -194,39 +123,27 @@ services:
       - TZ=Europe/Rome
       - EMAIL=your-email@domain.com
       - PASSWORD=your-password
-      - PUID=${PUID:-1000}
-      - PGID=${PGID:-1000}
     volumes:
       - ./data:/data
     restart: unless-stopped
 ```
 
-Prima di avviare l'applicazione, crea la directory per i dati:
-
 ```bash
 mkdir -p ./data
+docker compose up -d
 ```
 
-> [!IMPORTANT]
-> Per impostazione predefinita, il container userà UID:GID 1000:1000. Se hai bisogno di usare un utente diverso, puoi specificarlo in due modi:
-> 1. Tramite variabili d'ambiente prima del lancio:
->    ```bash
->    export PUID=1001
->    export PGID=1001
->    docker-compose up -d
->    ```
-> 2. Creando un file `.env` nella stessa directory del docker-compose:
->    ```bash
->    echo "PUID=$(id -u)" > .env
->    echo "PGID=$(id -g)" >> .env
->    ```
->
-> In entrambi i casi, non è necessario eseguire manualmente il chown della directory.
+L'applicazione sara' disponibile su `http://localhost:5000`.
 
-Poi avvia l'applicazione:
+## Sviluppo
 
 ```bash
-docker-compose up -d
+# Copia e compila il secret
+cp deploy/helm/secret.yaml.example deploy/helm/secret.yaml
+# Edita deploy/helm/secret.yaml con le tue credenziali
+
+# Avvia con skaffold (richiede minikube o cluster k8s)
+skaffold dev --tail
 ```
 
-L'applicazione sarà disponibile all'indirizzo `http://localhost:5000`
+Skaffold sincronizza automaticamente i file Python, HTML, CSS e JS nel pod senza rebuild.

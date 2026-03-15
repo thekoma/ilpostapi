@@ -1,11 +1,13 @@
-from sqlalchemy import Column, Integer, String, DateTime, Text, ForeignKey, create_engine, Boolean
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship
-from datetime import datetime
+from datetime import datetime, timezone
+
+from sqlalchemy import Column, Integer, String, DateTime, Text, ForeignKey, Boolean
+from sqlalchemy.orm import DeclarativeBase, relationship
 
 __all__ = ["Base", "Podcast", "Episode"]
 
-Base = declarative_base()
+
+class Base(DeclarativeBase):
+    pass
 
 
 class Podcast(Base):
@@ -16,8 +18,13 @@ class Podcast(Base):
     title = Column(String)
     description = Column(Text)
     image_url = Column(String)
-    last_checked = Column(DateTime, default=datetime.utcnow)
-    episodes = relationship("Episode", back_populates="podcast", cascade="all, delete-orphan")
+    author = Column(String)
+    share_url = Column(String)
+    slug = Column(String)
+    last_checked = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    episodes = relationship(
+        "Episode", back_populates="podcast", cascade="all, delete-orphan"
+    )
 
 
 class Episode(Base):
@@ -28,8 +35,14 @@ class Episode(Base):
     podcast_id = Column(Integer, ForeignKey("podcasts.id"), nullable=False)
     title = Column(String)
     description = Column(Text)
+    summary = Column(Text)
     description_verified = Column(Boolean, default=False)
     audio_url = Column(String)
+    author = Column(String)
+    image_url = Column(String)
+    share_url = Column(String)
+    slug = Column(String)
+    episode_type = Column(String)  # "full", "bonus", "trailer"
     publication_date = Column(DateTime(timezone=True))
     duration = Column(Integer)  # in seconds
     podcast = relationship("Podcast", back_populates="episodes")
