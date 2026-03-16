@@ -146,12 +146,13 @@ class TestOPML:
             {"id": 1, "title": "Podcast Uno"},
             {"id": 2, "title": "Podcast Due"},
         ]
-        opml = _generate_opml(podcasts, "test-token-123", False)
+        opml = _generate_opml(podcasts, "test-token-123", False, "https://app.example.com")
         assert "<opml" in opml
         assert "ilPost Podcasts" in opml
         assert "Podcast Uno" in opml
         assert "Podcast Due" in opml
         assert "test-token-123" in opml
+        assert "https://app.example.com/podcast/" in opml
         assert "Preferiti" not in opml
 
     async def test_opml_generate_favorites_only(self):
@@ -159,7 +160,7 @@ class TestOPML:
         from routes.api import _generate_opml
 
         podcasts = [{"id": 1, "title": "Preferito"}]
-        opml = _generate_opml(podcasts, "token-abc", True)
+        opml = _generate_opml(podcasts, "token-abc", True, "https://app.example.com")
         assert "Preferiti" in opml
         assert "Preferito" in opml
         assert "token-abc" in opml
@@ -168,7 +169,7 @@ class TestOPML:
         """OPML con lista vuota."""
         from routes.api import _generate_opml
 
-        opml = _generate_opml([], "token-xyz", False)
+        opml = _generate_opml([], "token-xyz", False, "https://app.example.com")
         assert "<opml" in opml
         assert "</opml>" in opml
 
@@ -177,7 +178,15 @@ class TestOPML:
         from routes.api import _generate_opml
 
         podcasts = [{"id": 1, "title": 'Podcast "Con & Caratteri <Speciali>'}]
-        opml = _generate_opml(podcasts, "token", False)
+        opml = _generate_opml(podcasts, "token", False, "https://app.example.com")
         assert "&amp;" in opml
         assert "&lt;" in opml
         assert "&gt;" in opml
+
+    async def test_opml_uses_request_base_url(self):
+        """Verifica che l'OPML usi l'URL del reverse proxy, non BASE_URL."""
+        from routes.api import _generate_opml
+
+        podcasts = [{"id": 1, "title": "Test"}]
+        opml = _generate_opml(podcasts, "tok", False, "https://podcasts.mydomain.com")
+        assert "https://podcasts.mydomain.com/podcast/1/rss/tok" in opml
