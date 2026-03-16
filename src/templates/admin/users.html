@@ -1,0 +1,200 @@
+{% extends "auth/base_auth.html" %}
+{% block title %}Gestione Utenti - ilPost Podcasts{% endblock %}
+{% block content %}
+    <style>
+        .auth-container { max-width: 800px; }
+        .users-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1rem 0;
+            font-size: 0.85rem;
+        }
+        .users-table th, .users-table td {
+            padding: 0.5rem 0.6rem;
+            text-align: left;
+            border-bottom: 1px solid var(--surface);
+        }
+        .users-table th {
+            font-weight: 600;
+            color: var(--subtext0);
+            font-size: 0.8rem;
+            text-transform: uppercase;
+        }
+        .badge {
+            display: inline-block;
+            padding: 0.15rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+        .badge-admin { background: rgba(114, 135, 253, 0.15); color: var(--blue, #7287fd); }
+        .badge-user { background: rgba(64, 160, 43, 0.15); color: var(--green, #40a02b); }
+        .btn-action {
+            padding: 0.25rem 0.5rem;
+            font-size: 0.8rem;
+            border-radius: 6px;
+            border: none;
+            cursor: pointer;
+            display: inline-block;
+            margin: 0.1rem;
+        }
+        .btn-delete {
+            background: rgba(210, 15, 57, 0.15);
+            color: var(--red, #d20f39);
+        }
+        .btn-role {
+            background: rgba(114, 135, 253, 0.15);
+            color: var(--blue, #7287fd);
+        }
+        .btn-reset {
+            background: rgba(223, 142, 29, 0.15);
+            color: var(--yellow, #df8e1d);
+        }
+        .btn-action:hover { opacity: 0.8; }
+        .btn-action:disabled { opacity: 0.3; cursor: not-allowed; }
+        .actions-cell { white-space: nowrap; }
+        .add-user-form {
+            margin-top: 1.5rem;
+            padding-top: 1.5rem;
+            border-top: 1px solid var(--surface);
+        }
+        .add-user-form h2 {
+            font-size: 1.1rem;
+            margin-bottom: 1rem;
+            font-family: var(--font-serif);
+        }
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.8rem;
+        }
+        .form-group select {
+            width: 100%;
+            padding: 0.6rem 0.8rem;
+            border: 1px solid var(--surface);
+            border-radius: 8px;
+            font-size: 1rem;
+            background: var(--background-color);
+            color: var(--text-color);
+            font-family: var(--font-sans);
+        }
+        .password-hint {
+            font-size: 0.75rem;
+            color: var(--subtext0);
+            margin-top: 0.2rem;
+        }
+    </style>
+
+    <h1>Gestione Utenti</h1>
+
+    {% if error %}
+    <div class="alert alert-error"><i class="fas fa-exclamation-circle"></i> {{ error }}</div>
+    {% endif %}
+    {% if success %}
+    <div class="alert alert-success"><i class="fas fa-check-circle"></i> {{ success }}</div>
+    {% endif %}
+
+    <table class="users-table">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Username</th>
+                <th>Email</th>
+                <th>Ruolo</th>
+                <th>Azioni</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for u in users %}
+            <tr>
+                <td>{{ u.id }}</td>
+                <td>{{ u.username }}</td>
+                <td>{{ u.email }}</td>
+                <td>
+                    <span class="badge {{ 'badge-admin' if u.role == 'admin' else 'badge-user' }}">
+                        {{ u.role }}
+                    </span>
+                </td>
+                <td class="actions-cell">
+                    {% if u.id != 1 %}
+                    {# Cambio ruolo #}
+                    <form method="POST" action="/admin/users/{{ u.id }}/role" style="display:inline">
+                        {% if u.role == 'user' %}
+                        <input type="hidden" name="role" value="admin">
+                        <button type="submit" class="btn-action btn-role" title="Promuovi ad admin">
+                            <i class="fas fa-arrow-up"></i>
+                        </button>
+                        {% else %}
+                        <input type="hidden" name="role" value="user">
+                        <button type="submit" class="btn-action btn-role" title="Declassa a user">
+                            <i class="fas fa-arrow-down"></i>
+                        </button>
+                        {% endif %}
+                    </form>
+                    {% endif %}
+
+                    {# Reset password #}
+                    {% if smtp_enabled %}
+                    <form method="POST" action="/admin/users/{{ u.id }}/reset-password" style="display:inline"
+                          onsubmit="return confirm('Inviare email di reset password a {{ u.email }}?')">
+                        <button type="submit" class="btn-action btn-reset" title="Reset password via email">
+                            <i class="fas fa-key"></i>
+                        </button>
+                    </form>
+                    {% endif %}
+
+                    {# Cancella utente #}
+                    {% if u.id != 1 and u.id != user.id %}
+                    <form method="POST" action="/admin/users/{{ u.id }}/delete"
+                          onsubmit="return confirm('Cancellare l\'utente {{ u.username }}?')"
+                          style="display:inline">
+                        <button type="submit" class="btn-action btn-delete" title="Cancella utente">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </form>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <div class="add-user-form">
+        <h2>Aggiungi Utente</h2>
+        <form method="POST" action="/admin/users/create">
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="username">Username</label>
+                    <input type="text" id="username" name="username" required>
+                </div>
+                <div class="form-group">
+                    <label for="email">Email</label>
+                    <input type="email" id="email" name="email" required>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" name="password" minlength="8">
+                    <div class="password-hint">Lascia vuoto per inviare un invito via email</div>
+                </div>
+                <div class="form-group">
+                    <label for="role">Ruolo</label>
+                    <select id="role" name="role">
+                        <option value="user">User</option>
+                        <option value="admin">Admin</option>
+                    </select>
+                </div>
+            </div>
+            <button type="submit" class="btn btn-primary" style="margin-top: 0.5rem;">
+                <i class="fas fa-user-plus"></i> Aggiungi
+            </button>
+        </form>
+    </div>
+
+    <div class="auth-links" style="margin-top: 1.5rem;">
+        <a href="/profile"><i class="fas fa-arrow-left"></i> Torna al profilo</a>
+        &nbsp;&middot;&nbsp;
+        <a href="/"><i class="fas fa-home"></i> Podcast</a>
+    </div>
+{% endblock %}

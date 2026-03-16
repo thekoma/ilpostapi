@@ -14,6 +14,7 @@ from api_client import (
     clear_all_caches,
 )
 from auth import clear_token_cache
+from auth_dependencies import require_auth
 from database import get_db, Podcast, Episode
 from database.operations import (
     get_or_create_podcast,
@@ -21,6 +22,8 @@ from database.operations import (
     get_podcast_episodes,
     save_episodes,
 )
+from database.user_operations import get_user_by_rss_token
+from database.favorite_operations import get_user_favorites, add_favorite, remove_favorite
 from feeds import rss_generator, rdf_generator
 from helpers import clean_html_text, format_duration
 from utils.logging import get_logger
@@ -76,7 +79,7 @@ def serialize_episode_full(episode) -> dict:
 
 
 @router.get("/podcasts", description="Returns a list of podcasts.")
-async def get_podcasts(page: int = 1, hits: int = 50):
+async def get_podcasts(page: int = 1, hits: int = 50, user=Depends(require_auth)):
     try:
         return await fetch_podcasts(page, hits)
     except HTTPException as e:
@@ -87,7 +90,7 @@ async def get_podcasts(page: int = 1, hits: int = 50):
     "/podcasts/search",
     description="Searches for podcasts by title using fuzzy matching.",
 )
-async def search_podcasts(query: str, request: Request):
+async def search_podcasts(query: str, request: Request, user=Depends(require_auth)):
     from difflib import get_close_matches
 
     podcasts = await fetch_podcasts()
@@ -124,6 +127,7 @@ async def get_podcast_detail(
     podcast_id: int = Path(..., description="The ID of the podcast"),
     page: int = 1,
     hits: int = 1,
+    _user=Depends(require_auth),
 ):
     try:
         return await fetch_episodes(podcast_id, page, hits)
@@ -141,6 +145,7 @@ async def get_podcast_detail(
 )
 async def get_last_episode(
     podcast_id: int = Path(..., description="The ID of the podcast"),
+    _user=Depends(require_auth),
 ):
     try:
         episode = await fetch_episodes(podcast_id=podcast_id)
@@ -208,7 +213,7 @@ async def healthcheck():
 
 
 @router.get("/clear-cache")
-async def clear_cache():
+async def clear_cache(_user=Depends(require_auth)):
     """Pulisce tutte le cache."""
     clear_all_caches()
     clear_token_cache()
@@ -219,6 +224,7 @@ async def clear_cache():
 async def get_podcast_episodes_json(
     podcast_id: int = Path(...),
     per_page: int = 100,
+    _user=Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
     try:
@@ -264,6 +270,7 @@ async def get_podcast_episodes_json(
 async def get_episode_description(
     podcast_id: int = Path(...),
     episode_id: str = Path(...),
+    _user=Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
     try:
@@ -308,6 +315,7 @@ async def get_episode_description(
 async def refresh_episode(
     podcast_id: int = Path(...),
     episode_id: str = Path(...),
+    _user=Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
     try:
@@ -349,6 +357,7 @@ async def refresh_episode(
 @router.post("/api/podcast/{podcast_id}/update", response_class=JSONResponse)
 async def update_podcast(
     podcast_id: int = Path(...),
+    _user=Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
     try:
@@ -399,7 +408,7 @@ async def update_podcast(
 
 
 @router.post("/api/podcasts/update", response_class=JSONResponse)
-async def update_podcasts_directory(db: AsyncSession = Depends(get_db)):
+async def update_podcasts_directory(_user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
     try:
         from routes.web import update_podcast_directory_cache, _directory_cache
 
@@ -419,15 +428,94 @@ async def update_podcasts_directory(db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# --- Favorites API ---
+
+
+@router.get("/api/favorites")
+async def get_favorites(user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
+    favorites = await get_user_favorites(db, user.id)
+    return {"favorites": favorites}
+
+
+@router.post("/api/favorites/{podcast_id}")
+async def toggle_favorite(
+    podcast_id: int = Path(...),
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    favorites = await get_user_favorites(db, user.id)
+    if podcast_id in favorites:
+        await remove_favorite(db, user.id, podcast_id)
+        return {"favorited": False}
+    else:
+        await add_favorite(db, user.id, podcast_id)
+        return {"favorited": True}
+
+
+@router.get("/api/opml/{token}")
+async def get_opml(
+    token: str = Path(...),
+    favorites_only: bool = False,
+    db: AsyncSession = Depends(get_db),
+):
+    """Genera file OPML con i podcast. Autenticazione via token RSS."""
+    user = await get_user_by_rss_token(db, token)
+    if not user:
+        raise HTTPException(status_code=403, detail="Token non valido")
+
+    podcasts_data = await fetch_podcasts(page=1, hits=100)
+    podcast_list = podcasts_data.get("data", [])
+
+    if favorites_only:
+        favorites = await get_user_favorites(db, user.id)
+        podcast_list = [p for p in podcast_list if p["id"] in favorites]
+
+    opml = _generate_opml(podcast_list, token, favorites_only)
+    return Response(
+        content=opml,
+        media_type="application/xml",
+        headers={"Content-Disposition": f"attachment; filename=ilpost-podcasts{'_preferiti' if favorites_only else ''}.opml"},
+    )
+
+
+def _generate_opml(podcasts: list, token: str, favorites_only: bool) -> str:
+    """Genera un file OPML con i podcast."""
+    from xml.sax.saxutils import escape
+    from config import BASE_URL
+
+    base = BASE_URL.rstrip("/")
+    title = "ilPost Podcasts - Preferiti" if favorites_only else "ilPost Podcasts"
+
+    lines = [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<opml version="2.0">',
+        '  <head>',
+        f'    <title>{escape(title)}</title>',
+        '  </head>',
+        '  <body>',
+        f'    <outline text="{escape(title)}">',
+    ]
+
+    for p in podcasts:
+        rss_url = f"{base}/podcast/{p['id']}/rss/{token}"
+        lines.append(
+            f'      <outline type="rss" text="{escape(p["title"])}" '
+            f'title="{escape(p["title"])}" xmlUrl="{escape(rss_url)}" />'
+        )
+
+    lines += [
+        '    </outline>',
+        '  </body>',
+        '</opml>',
+    ]
+
+    return "\n".join(lines)
+
+
 # --- Feed Endpoints ---
 
 
-@router.get("/podcast/{podcast_id}/rss")
-async def get_podcast_rss(
-    podcast_id: int = Path(...),
-    request: Request = None,
-    db: AsyncSession = Depends(get_db),
-):
+async def _generate_rss(podcast_id: int, request: Request, db: AsyncSession):
     try:
         podcasts = await fetch_podcasts()
         podcast_info = next(
@@ -534,10 +622,7 @@ async def get_podcast_rss(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/podcast/{podcast_id}/rdf")
-async def get_podcast_rdf(
-    podcast_id: int = Path(...), request: Request = None
-):
+async def _generate_rdf(podcast_id: int, request: Request):
     try:
         podcasts = await fetch_podcasts()
         podcast_info = next(
@@ -567,3 +652,52 @@ async def get_podcast_rdf(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# --- Authenticated feed routes (session auth) ---
+
+@router.get("/podcast/{podcast_id}/rss")
+async def get_podcast_rss(
+    podcast_id: int = Path(...),
+    request: Request = None,
+    _user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    return await _generate_rss(podcast_id, request, db)
+
+
+@router.get("/podcast/{podcast_id}/rdf")
+async def get_podcast_rdf(
+    podcast_id: int = Path(...),
+    request: Request = None,
+    _user=Depends(require_auth),
+):
+    return await _generate_rdf(podcast_id, request)
+
+
+# --- Token-authenticated feed routes (for RSS readers) ---
+
+@router.get("/podcast/{podcast_id}/rss/{token}")
+async def get_podcast_rss_token(
+    podcast_id: int = Path(...),
+    token: str = Path(...),
+    request: Request = None,
+    db: AsyncSession = Depends(get_db),
+):
+    user = await get_user_by_rss_token(db, token)
+    if not user:
+        raise HTTPException(status_code=403, detail="Token non valido")
+    return await _generate_rss(podcast_id, request, db)
+
+
+@router.get("/podcast/{podcast_id}/rdf/{token}")
+async def get_podcast_rdf_token(
+    podcast_id: int = Path(...),
+    token: str = Path(...),
+    request: Request = None,
+    db: AsyncSession = Depends(get_db),
+):
+    user = await get_user_by_rss_token(db, token)
+    if not user:
+        raise HTTPException(status_code=403, detail="Token non valido")
+    return await _generate_rdf(podcast_id, request)

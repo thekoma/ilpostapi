@@ -66,9 +66,19 @@ def _check_schema_current(sync_conn):
     inspector = inspect(sync_conn)
     if not sync_conn.dialect.has_table(sync_conn, "podcasts"):
         return False
+    if not sync_conn.dialect.has_table(sync_conn, "users"):
+        return False
     columns = {c["name"] for c in inspector.get_columns("episodes")}
     required = {"summary", "author", "image_url", "share_url", "slug", "episode_type"}
-    return required.issubset(columns)
+    if not required.issubset(columns):
+        return False
+    user_columns = {c["name"] for c in inspector.get_columns("users")}
+    user_required = {"username", "email", "password_hash", "role", "rss_token", "oauth_sub"}
+    if not user_required.issubset(user_columns):
+        return False
+    if not sync_conn.dialect.has_table(sync_conn, "favorites"):
+        return False
+    return True
 
 
 async def init_db():

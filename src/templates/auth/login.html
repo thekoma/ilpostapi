@@ -1,0 +1,37 @@
+{% extends "auth/base_auth.html" %}
+{% block title %}Login - ilPost Podcasts{% endblock %}
+{% block content %}
+    <h1>ilPost Podcasts</h1>
+    <p class="subtitle">Accedi per continuare</p>
+
+    {% if error %}
+    <div class="alert alert-error"><i class="fas fa-exclamation-circle"></i> {{ error }}</div>
+    {% endif %}
+
+    <form method="POST" action="/auth/login">
+        <div class="form-group">
+            <label for="username">Username o Email</label>
+            <input type="text" id="username" name="username" required autofocus>
+        </div>
+        <div class="form-group">
+            <label for="password">Password</label>
+            <input type="password" id="password" name="password" required>
+        </div>
+        <button type="submit" class="btn btn-primary">
+            <i class="fas fa-sign-in-alt"></i> Accedi
+        </button>
+    </form>
+
+    {% if smtp_enabled %}
+    <div class="auth-links" style="margin-top: 0.5rem;">
+        <a href="/auth/forgot-password">Password dimenticata?</a>
+    </div>
+    {% endif %}
+
+    {% if oidc_enabled %}
+    <div class="divider"><span>oppure</span></div>
+    <a href="/auth/login/oidc" class="btn btn-oidc">
+        <i class="fas fa-key"></i> Accedi con {{ oidc_provider_name }}
+    </a>
+    {% endif %}
+{% endblock %}

@@ -1,0 +1,32 @@
+{% extends "auth/base_auth.html" %}
+{% block title %}Setup iniziale - ilPost Podcasts{% endblock %}
+{% block content %}
+    <h1>Benvenuto!</h1>
+    <p class="subtitle">Crea il primo account amministratore</p>
+
+    {% if error %}
+    <div class="alert alert-error"><i class="fas fa-exclamation-circle"></i> {{ error }}</div>
+    {% endif %}
+
+    <form method="POST" action="/auth/setup">
+        <div class="form-group">
+            <label for="username">Username</label>
+            <input type="text" id="username" name="username" required autofocus>
+        </div>
+        <div class="form-group">
+            <label for="email">Email</label>
+            <input type="email" id="email" name="email" required>
+        </div>
+        <div class="form-group">
+            <label for="password">Password</label>
+            <input type="password" id="password" name="password" required minlength="8">
+        </div>
+        <div class="form-group">
+            <label for="password_confirm">Conferma Password</label>
+            <input type="password" id="password_confirm" name="password_confirm" required minlength="8">
+        </div>
+        <button type="submit" class="btn btn-primary">
+            <i class="fas fa-user-shield"></i> Crea Admin
+        </button>
+    </form>
+{% endblock %}

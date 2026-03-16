@@ -1,9 +1,14 @@
+function getRssToken() {
+    return document.body.dataset.rssToken || '';
+}
+
 function toggleRssPopup(event, podcastId) {
     event.preventDefault();
     event.stopPropagation();
 
     var popup = document.getElementById('rss-popup');
     var button = event.currentTarget;
+    var token = getRssToken();
 
     // If already open for this podcast, close it
     if (popup.classList.contains('visible') && popup.dataset.podcastId === String(podcastId)) {
@@ -11,10 +16,14 @@ function toggleRssPopup(event, podcastId) {
         return;
     }
 
+    // Build paths with token
+    var rssPath = '/podcast/' + podcastId + '/rss' + (token ? '/' + token : '');
+    var rdfPath = '/podcast/' + podcastId + '/rdf' + (token ? '/' + token : '');
+
     // Update links
     popup.dataset.podcastId = podcastId;
-    document.getElementById('rss-popup-rss-link').href = '/podcast/' + podcastId + '/rss';
-    document.getElementById('rss-popup-rdf-link').href = '/podcast/' + podcastId + '/rdf';
+    document.getElementById('rss-popup-rss-link').href = rssPath;
+    document.getElementById('rss-popup-rdf-link').href = rdfPath;
 
     // Setup copy buttons
     var copyRss = document.getElementById('rss-popup-copy-rss');
@@ -22,11 +31,11 @@ function toggleRssPopup(event, podcastId) {
 
     copyRss.onclick = function (e) {
         e.stopPropagation();
-        copyFeedUrl(copyRss, '/podcast/' + podcastId + '/rss');
+        copyFeedUrl(copyRss, rssPath);
     };
     copyRdf.onclick = function (e) {
         e.stopPropagation();
-        copyFeedUrl(copyRdf, '/podcast/' + podcastId + '/rdf');
+        copyFeedUrl(copyRdf, rdfPath);
     };
 
     // Reset copy button text
