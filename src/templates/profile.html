@@ -1,0 +1,125 @@
+{% extends "auth/base_auth.html" %}
+{% block title %}Profilo - ilPost Podcasts{% endblock %}
+{% block content %}
+    <h1>Profilo</h1>
+    <p class="subtitle">{{ user.username }}</p>
+
+    <style>
+        .profile-field { margin-bottom: 1rem; }
+        .profile-field label {
+            display: block;
+            font-weight: 500;
+            font-size: 0.85rem;
+            color: var(--subtext0);
+            margin-bottom: 0.2rem;
+        }
+        .profile-field .value {
+            font-size: 0.95rem;
+            padding: 0.4rem 0;
+        }
+        .token-box {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            background: var(--background-color);
+            border: 1px solid var(--surface);
+            border-radius: 8px;
+            padding: 0.5rem 0.8rem;
+            font-family: monospace;
+            font-size: 0.8rem;
+            word-break: break-all;
+        }
+        .token-box .token-text { flex: 1; }
+        .btn-small {
+            padding: 0.3rem 0.6rem;
+            font-size: 0.8rem;
+            border-radius: 6px;
+            border: none;
+            cursor: pointer;
+            background: var(--surface);
+            color: var(--text-color);
+        }
+        .btn-small:hover { opacity: 0.8; }
+        .btn-danger { background: rgba(210, 15, 57, 0.15); color: var(--red, #d20f39); }
+        .profile-actions {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            margin-top: 1.5rem;
+        }
+        .btn-secondary {
+            background: var(--surface);
+            color: var(--text-color);
+            width: 100%;
+        }
+        .rss-example {
+            margin-top: 0.5rem;
+            padding: 0.5rem 0.8rem;
+            background: var(--background-color);
+            border: 1px solid var(--surface);
+            border-radius: 8px;
+            font-size: 0.75rem;
+            font-family: monospace;
+            word-break: break-all;
+            color: var(--subtext0);
+        }
+    </style>
+
+    <div class="profile-field">
+        <label>Username</label>
+        <div class="value">{{ user.username }}</div>
+    </div>
+
+    <div class="profile-field">
+        <label>Email</label>
+        <div class="value">{{ user.email }}</div>
+    </div>
+
+    <div class="profile-field">
+        <label>Ruolo</label>
+        <div class="value">{{ user.role | capitalize }}</div>
+    </div>
+
+    <div class="profile-field">
+        <label>Token RSS</label>
+        <div class="token-box">
+            <span class="token-text" id="rss-token">{{ user.rss_token }}</span>
+            <button class="btn-small" onclick="copyToken()" title="Copia token">
+                <i class="fas fa-copy"></i>
+            </button>
+        </div>
+        <div class="rss-example">
+            Esempio URL: {{ base_url }}/podcast/123/rss/{{ user.rss_token }}
+        </div>
+        <form method="POST" action="/profile/regenerate-token" style="margin-top: 0.5rem;"
+              onsubmit="return confirm('Rigenerando il token, tutti i feed RSS configurati smetteranno di funzionare. Continuare?')">
+            <button type="submit" class="btn-small btn-danger">
+                <i class="fas fa-sync-alt"></i> Rigenera Token
+            </button>
+        </form>
+    </div>
+
+    <div class="profile-actions">
+        <a href="/auth/change-password" class="btn btn-secondary">
+            <i class="fas fa-key"></i> Cambia Password
+        </a>
+        {% if user.is_admin %}
+        <a href="/admin/users" class="btn btn-secondary">
+            <i class="fas fa-users-cog"></i> Gestione Utenti
+        </a>
+        {% endif %}
+        <a href="/" class="btn btn-secondary">
+            <i class="fas fa-arrow-left"></i> Torna ai Podcast
+        </a>
+        <a href="/auth/logout" class="btn btn-secondary">
+            <i class="fas fa-sign-out-alt"></i> Esci
+        </a>
+    </div>
+
+    <script>
+    function copyToken() {
+        var token = document.getElementById('rss-token').textContent;
+        navigator.clipboard.writeText(token);
+    }
+    </script>
+{% endblock %}
