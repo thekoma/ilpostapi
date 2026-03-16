@@ -12,7 +12,8 @@ from api_client import (
     check_updates_from_bff,
     get_episode_info_cache,
 )
-from config import CACHE_TTL
+from auth_dependencies import require_auth
+from config import CACHE_TTL, BASE_URL
 from database import get_db
 from database.operations import get_podcast_episodes
 from helpers import (
@@ -189,7 +190,9 @@ async def get_last_episode_info(podcast_id: int, db: AsyncSession = None):
 @router.get("/", response_class=HTMLResponse)
 @router.get("/podcasts/directory", response_class=HTMLResponse)
 async def podcast_directory(
-    request: Request, db: AsyncSession = Depends(get_db)
+    request: Request,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
 ):
     try:
         needs_update = False
@@ -202,13 +205,16 @@ async def podcast_directory(
             await update_podcast_directory_cache()
             podcast_list = _directory_cache.get("directory", [])
 
+        base_url = BASE_URL.rstrip("/")
         return templates.TemplateResponse(
             "podcast_directory.html",
             {
                 "request": request,
+                "user": user,
                 "podcasts": podcast_list,
                 "year": datetime.now().year,
                 "needs_update": needs_update,
+                "base_url": base_url,
             },
         )
     except Exception as e:
@@ -222,6 +228,7 @@ async def podcast_episodes(
     request: Request = None,
     page: int = 1,
     per_page: int = 20,
+    user=Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
     try:
@@ -290,15 +297,18 @@ async def podcast_episodes(
             serialize_episode_full(ep) for ep in paginated_episodes
         ]
 
+        base_url = BASE_URL.rstrip("/")
         return templates.TemplateResponse(
             "podcast_episodes.html",
             {
                 "request": request,
+                "user": user,
                 "podcast": podcast,
                 "episodes": serialized_episodes,
                 "pagination": pagination,
                 "podcast_id": podcast_id,
                 "year": datetime.now().year,
+                "base_url": base_url,
             },
         )
     except HTTPException:
