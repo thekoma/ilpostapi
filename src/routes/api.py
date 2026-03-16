@@ -454,6 +454,7 @@ async def toggle_favorite(
 
 @router.get("/api/opml/{token}")
 async def get_opml(
+    request: Request,
     token: str = Path(...),
     favorites_only: bool = False,
     db: AsyncSession = Depends(get_db),
@@ -470,7 +471,8 @@ async def get_opml(
         favorites = await get_user_favorites(db, user.id)
         podcast_list = [p for p in podcast_list if p["id"] in favorites]
 
-    opml = _generate_opml(podcast_list, token, favorites_only)
+    base_url = str(request.base_url).rstrip("/")
+    opml = _generate_opml(podcast_list, token, favorites_only, base_url)
     return Response(
         content=opml,
         media_type="application/xml",
@@ -478,12 +480,11 @@ async def get_opml(
     )
 
 
-def _generate_opml(podcasts: list, token: str, favorites_only: bool) -> str:
+def _generate_opml(podcasts: list, token: str, favorites_only: bool, base_url: str = "") -> str:
     """Genera un file OPML con i podcast."""
     from xml.sax.saxutils import escape
-    from config import BASE_URL
 
-    base = BASE_URL.rstrip("/")
+    base = base_url.rstrip("/")
     title = "ilPost Podcasts - Preferiti" if favorites_only else "ilPost Podcasts"
 
     lines = [

@@ -46,6 +46,9 @@ async def create_user_route(
     admin=Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
+    username = username.strip()
+    email = email.strip()
+
     if role not in ("admin", "user"):
         role = "user"
 

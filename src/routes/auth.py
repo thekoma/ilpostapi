@@ -59,6 +59,9 @@ async def setup_create_admin(
     db: AsyncSession = Depends(get_db),
 ):
     """Create the first admin user."""
+    username = username.strip()
+    email = email.strip()
+
     user_count = await get_user_count(db)
     if user_count > 0:
         return RedirectResponse("/auth/login", status_code=302)
@@ -108,6 +111,7 @@ async def login_submit(
     db: AsyncSession = Depends(get_db),
 ):
     """Handle login form submission."""
+    username = username.strip()
     user = await get_user_by_username(db, username)
     if not user:
         user = await get_user_by_email(db, username)
@@ -287,6 +291,7 @@ async def forgot_password_submit(
     if not SMTP_ENABLED:
         raise HTTPException(status_code=404, detail="SMTP non configurato")
 
+    email = email.strip()
     user = await get_user_by_email(db, email)
     # Always show success to prevent email enumeration
     if user:
