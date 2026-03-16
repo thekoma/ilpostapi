@@ -179,3 +179,147 @@ class TestAdminDeleteUser:
         await login_client(client, "nodelperm", "password123")
         resp = await client.post("/admin/users/1/delete", follow_redirects=False)
         assert resp.status_code == 403
+
+
+@pytest.mark.asyncio(loop_scope="session")
+class TestAdminChangeRole:
+    async def test_promote_user_to_admin(self, client: AsyncClient):
+        await create_admin_via_setup(client)
+        await create_user_via_admin(client, "promoteme", "promoteme@test.com", "password123", "user")
+
+        from database.database import AsyncSessionLocal
+        from database.user_operations import get_user_by_username
+
+        async with AsyncSessionLocal() as db:
+            user = await get_user_by_username(db, "promoteme")
+            user_id = user.id
+
+        resp = await client.post(
+            f"/admin/users/{user_id}/role",
+            data={"role": "admin"},
+        )
+        assert resp.status_code == 200
+        assert "aggiornato" in resp.text
+
+        # Verifica che il ruolo sia cambiato
+        async with AsyncSessionLocal() as db:
+            user = await get_user_by_username(db, "promoteme")
+            assert user.role == "admin"
+
+    async def test_demote_admin_to_user(self, client: AsyncClient):
+        await create_admin_via_setup(client)
+        await create_user_via_admin(client, "demoteme", "demoteme@test.com", "password123", "admin")
+
+        from database.database import AsyncSessionLocal
+        from database.user_operations import get_user_by_username
+
+        async with AsyncSessionLocal() as db:
+            user = await get_user_by_username(db, "demoteme")
+            user_id = user.id
+
+        resp = await client.post(
+            f"/admin/users/{user_id}/role",
+            data={"role": "user"},
+        )
+        assert resp.status_code == 200
+        assert "aggiornato" in resp.text
+
+        async with AsyncSessionLocal() as db:
+            user = await get_user_by_username(db, "demoteme")
+            assert user.role == "user"
+
+    async def test_cannot_change_primary_admin_role(self, client: AsyncClient):
+        await create_admin_via_setup(client)
+        resp = await client.post(
+            "/admin/users/1/role",
+            data={"role": "user"},
+        )
+        assert resp.status_code == 200
+        assert "admin principale" in resp.text
+
+    async def test_change_role_invalid(self, client: AsyncClient):
+        await create_admin_via_setup(client)
+        await create_user_via_admin(client, "badrole2", "badrole2@test.com", "password123")
+
+        from database.database import AsyncSessionLocal
+        from database.user_operations import get_user_by_username
+
+        async with AsyncSessionLocal() as db:
+            user = await get_user_by_username(db, "badrole2")
+            user_id = user.id
+
+        resp = await client.post(
+            f"/admin/users/{user_id}/role",
+            data={"role": "superuser"},
+        )
+        assert resp.status_code == 200
+        assert "non valido" in resp.text
+
+    async def test_change_role_nonexistent_user(self, client: AsyncClient):
+        await create_admin_via_setup(client)
+        resp = await client.post(
+            "/admin/users/99999/role",
+            data={"role": "admin"},
+            follow_redirects=False,
+        )
+        assert resp.status_code == 404
+
+    async def test_regular_user_cannot_change_role(self, client: AsyncClient):
+        await create_admin_via_setup(client)
+        await create_user_via_admin(client, "norole", "norole@test.com", "password123", "user")
+        await client.get("/auth/logout", follow_redirects=False)
+        await login_client(client, "norole", "password123")
+        resp = await client.post(
+            "/admin/users/1/role",
+            data={"role": "user"},
+            follow_redirects=False,
+        )
+        assert resp.status_code == 403
+
+
+@pytest.mark.asyncio(loop_scope="session")
+class TestAdminCreateUserNoPassword:
+    async def test_create_user_no_password_without_smtp(self, client: AsyncClient):
+        """Senza SMTP, creare utente senza password deve fallire."""
+        await create_admin_via_setup(client)
+        resp = await client.post(
+            "/admin/users/create",
+            data={
+                "username": "nosmtp",
+                "email": "nosmtp@test.com",
+                "password": "",
+                "role": "user",
+            },
+        )
+        assert resp.status_code == 200
+        assert "SMTP" in resp.text
+
+
+@pytest.mark.asyncio(loop_scope="session")
+class TestAdminResetPassword:
+    async def test_reset_password_without_smtp(self, client: AsyncClient):
+        """Senza SMTP, il reset password deve fallire."""
+        await create_admin_via_setup(client)
+        await create_user_via_admin(client, "resetme", "resetme@test.com", "password123")
+
+        from database.database import AsyncSessionLocal
+        from database.user_operations import get_user_by_username
+
+        async with AsyncSessionLocal() as db:
+            user = await get_user_by_username(db, "resetme")
+            user_id = user.id
+
+        resp = await client.post(f"/admin/users/{user_id}/reset-password")
+        assert resp.status_code == 200
+        assert "SMTP" in resp.text
+
+    async def test_reset_password_nonexistent_user(self, client: AsyncClient):
+        await create_admin_via_setup(client)
+        resp = await client.post(
+            "/admin/users/99999/reset-password",
+            follow_redirects=False,
+        )
+        # Senza SMTP: errore SMTP. Con SMTP: 404 utente non trovato.
+        # In test SMTP e' disabilitato, quindi il messaggio e' su SMTP
+        assert resp.status_code == 200
+        assert "SMTP" in resp.text

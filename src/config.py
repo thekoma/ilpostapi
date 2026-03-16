@@ -35,6 +35,7 @@ OIDC_CLIENT_ID = os.getenv("OIDC_CLIENT_ID", "")
 OIDC_CLIENT_SECRET = os.getenv("OIDC_CLIENT_SECRET", "")
 OIDC_REDIRECT_URI = os.getenv("OIDC_REDIRECT_URI", "")  # e.g. https://app.example.com/auth/callback
 OIDC_ADMIN_GROUP = os.getenv("OIDC_ADMIN_GROUP", "admin")  # group name for admin role
+OIDC_PROVIDER_NAME = os.getenv("OIDC_PROVIDER_NAME", "SSO")  # display name on login button
 OIDC_ENABLED = bool(OIDC_ISSUER and OIDC_CLIENT_ID and OIDC_CLIENT_SECRET)
 
 # SMTP Configuration (optional, for password reset emails)

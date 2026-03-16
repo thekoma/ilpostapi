@@ -9,7 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from auth_dependencies import require_auth
 from config import (
     OIDC_ISSUER, OIDC_CLIENT_ID, OIDC_CLIENT_SECRET, OIDC_REDIRECT_URI,
-    OIDC_ENABLED, OIDC_ADMIN_GROUP, SMTP_ENABLED, SECRET_KEY, BASE_URL,
+    OIDC_ENABLED, OIDC_ADMIN_GROUP, OIDC_PROVIDER_NAME,
+    SMTP_ENABLED, SECRET_KEY, BASE_URL,
     SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, SMTP_FROM, SMTP_USE_TLS,
     logger,
 )
@@ -94,6 +95,8 @@ async def login_page(request: Request, db: AsyncSession = Depends(get_db)):
         "request": request,
         "error": None,
         "oidc_enabled": OIDC_ENABLED,
+        "oidc_provider_name": OIDC_PROVIDER_NAME,
+        "smtp_enabled": SMTP_ENABLED,
     })
 
 
@@ -114,6 +117,8 @@ async def login_submit(
             "request": request,
             "error": "Credenziali non valide",
             "oidc_enabled": OIDC_ENABLED,
+            "oidc_provider_name": OIDC_PROVIDER_NAME,
+            "smtp_enabled": SMTP_ENABLED,
         })
 
     request.session["user_id"] = user.id
@@ -142,6 +147,21 @@ async def oidc_callback(request: Request, db: AsyncSession = Depends(get_db)):
         return RedirectResponse("/auth/login", status_code=302)
 
     userinfo = token.get("userinfo")
+    # Also fetch from userinfo endpoint to get groups claim
+    try:
+        userinfo_response = await oauth.authentik.userinfo(token=token, request=request)
+        if userinfo_response:
+            logger.info(f"OIDC userinfo endpoint response: {dict(userinfo_response)}")
+            # Merge: userinfo endpoint takes precedence (has groups)
+            if userinfo:
+                merged = dict(userinfo)
+                merged.update(dict(userinfo_response))
+                userinfo = merged
+            else:
+                userinfo = dict(userinfo_response)
+    except Exception as e:
+        logger.warning(f"OIDC userinfo endpoint call failed: {e}")
+
     if not userinfo:
         return RedirectResponse("/auth/login", status_code=302)
 
@@ -150,8 +170,13 @@ async def oidc_callback(request: Request, db: AsyncSession = Depends(get_db)):
     preferred_username = userinfo.get("preferred_username", email.split("@")[0] if email else sub)
     groups = userinfo.get("groups", [])
 
+    logger.info(f"OIDC userinfo: sub={sub}, email={email}, username={preferred_username}")
+    logger.info(f"OIDC groups received: {groups}")
+    logger.info(f"OIDC admin group configured: {OIDC_ADMIN_GROUP!r}")
+
     # Determine role from groups
     role = "admin" if OIDC_ADMIN_GROUP in groups else "user"
+    logger.info(f"OIDC determined role: {role}")
 
     # Try to find existing user by oauth_sub
     user = await get_user_by_oauth_sub(db, sub)
