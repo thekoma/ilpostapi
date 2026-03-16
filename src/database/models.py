@@ -1,9 +1,10 @@
+import secrets
 from datetime import datetime, timezone
 
 from sqlalchemy import Column, Integer, String, DateTime, Text, ForeignKey, Boolean
 from sqlalchemy.orm import DeclarativeBase, relationship
 
-__all__ = ["Base", "Podcast", "Episode"]
+__all__ = ["Base", "Podcast", "Episode", "User"]
 
 
 class Base(DeclarativeBase):
@@ -25,6 +26,24 @@ class Podcast(Base):
     episodes = relationship(
         "Episode", back_populates="podcast", cascade="all, delete-orphan"
     )
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    username = Column(String, unique=True, nullable=False, index=True)
+    email = Column(String, unique=True, nullable=False, index=True)
+    password_hash = Column(String, nullable=True)  # nullable for OIDC-only users
+    role = Column(String, nullable=False, default="user")  # "admin" or "user"
+    rss_token = Column(String, unique=True, nullable=False, index=True,
+                       default=lambda: secrets.token_urlsafe(32))
+    oauth_sub = Column(String, unique=True, nullable=True, index=True)  # OIDC subject
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    @property
+    def is_admin(self):
+        return self.role == "admin"
 
 
 class Episode(Base):
