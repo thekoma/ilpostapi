@@ -51,9 +51,10 @@ async def setup_db():
 async def db_session(setup_db) -> AsyncGenerator[AsyncSession, None]:
     """Provide a clean database session for each test."""
     async with AsyncSessionLocal() as session:
-        # Clean users table before each test
-        from database.models import User
+        # Clean users and favorites tables before each test
+        from database.models import User, Favorite
         from sqlalchemy import delete
+        await session.execute(delete(Favorite))
         await session.execute(delete(User))
         await session.commit()
         yield session

@@ -2,7 +2,7 @@
 {% block title %}Gestione Utenti - ilPost Podcasts{% endblock %}
 {% block content %}
     <style>
-        .auth-container { max-width: 700px; }
+        .auth-container { max-width: 800px; }
         .users-table {
             width: 100%;
             border-collapse: collapse;
@@ -29,17 +29,30 @@
         }
         .badge-admin { background: rgba(114, 135, 253, 0.15); color: var(--blue, #7287fd); }
         .badge-user { background: rgba(64, 160, 43, 0.15); color: var(--green, #40a02b); }
-        .btn-delete {
+        .btn-action {
             padding: 0.25rem 0.5rem;
             font-size: 0.8rem;
             border-radius: 6px;
             border: none;
             cursor: pointer;
+            display: inline-block;
+            margin: 0.1rem;
+        }
+        .btn-delete {
             background: rgba(210, 15, 57, 0.15);
             color: var(--red, #d20f39);
         }
-        .btn-delete:hover { opacity: 0.8; }
-        .btn-delete:disabled { opacity: 0.3; cursor: not-allowed; }
+        .btn-role {
+            background: rgba(114, 135, 253, 0.15);
+            color: var(--blue, #7287fd);
+        }
+        .btn-reset {
+            background: rgba(223, 142, 29, 0.15);
+            color: var(--yellow, #df8e1d);
+        }
+        .btn-action:hover { opacity: 0.8; }
+        .btn-action:disabled { opacity: 0.3; cursor: not-allowed; }
+        .actions-cell { white-space: nowrap; }
         .add-user-form {
             margin-top: 1.5rem;
             padding-top: 1.5rem;
@@ -65,6 +78,11 @@
             color: var(--text-color);
             font-family: var(--font-sans);
         }
+        .password-hint {
+            font-size: 0.75rem;
+            color: var(--subtext0);
+            margin-top: 0.2rem;
+        }
     </style>
 
     <h1>Gestione Utenti</h1>
@@ -83,7 +101,7 @@
                 <th>Username</th>
                 <th>Email</th>
                 <th>Ruolo</th>
-                <th></th>
+                <th>Azioni</th>
             </tr>
         </thead>
         <tbody>
@@ -97,12 +115,40 @@
                         {{ u.role }}
                     </span>
                 </td>
-                <td>
+                <td class="actions-cell">
+                    {% if u.id != 1 %}
+                    {# Cambio ruolo #}
+                    <form method="POST" action="/admin/users/{{ u.id }}/role" style="display:inline">
+                        {% if u.role == 'user' %}
+                        <input type="hidden" name="role" value="admin">
+                        <button type="submit" class="btn-action btn-role" title="Promuovi ad admin">
+                            <i class="fas fa-arrow-up"></i>
+                        </button>
+                        {% else %}
+                        <input type="hidden" name="role" value="user">
+                        <button type="submit" class="btn-action btn-role" title="Declassa a user">
+                            <i class="fas fa-arrow-down"></i>
+                        </button>
+                        {% endif %}
+                    </form>
+                    {% endif %}
+
+                    {# Reset password #}
+                    {% if smtp_enabled %}
+                    <form method="POST" action="/admin/users/{{ u.id }}/reset-password" style="display:inline"
+                          onsubmit="return confirm('Inviare email di reset password a {{ u.email }}?')">
+                        <button type="submit" class="btn-action btn-reset" title="Reset password via email">
+                            <i class="fas fa-key"></i>
+                        </button>
+                    </form>
+                    {% endif %}
+
+                    {# Cancella utente #}
                     {% if u.id != 1 and u.id != user.id %}
                     <form method="POST" action="/admin/users/{{ u.id }}/delete"
                           onsubmit="return confirm('Cancellare l\'utente {{ u.username }}?')"
                           style="display:inline">
-                        <button type="submit" class="btn-delete" title="Cancella utente">
+                        <button type="submit" class="btn-action btn-delete" title="Cancella utente">
                             <i class="fas fa-trash"></i>
                         </button>
                     </form>
@@ -129,7 +175,8 @@
             <div class="form-row">
                 <div class="form-group">
                     <label for="password">Password</label>
-                    <input type="password" id="password" name="password" required minlength="8">
+                    <input type="password" id="password" name="password" minlength="8">
+                    <div class="password-hint">Lascia vuoto per inviare un invito via email</div>
                 </div>
                 <div class="form-group">
                     <label for="role">Ruolo</label>

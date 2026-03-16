@@ -23,6 +23,7 @@ from database.operations import (
     save_episodes,
 )
 from database.user_operations import get_user_by_rss_token
+from database.favorite_operations import get_user_favorites, add_favorite, remove_favorite
 from feeds import rss_generator, rdf_generator
 from helpers import clean_html_text, format_duration
 from utils.logging import get_logger
@@ -425,6 +426,90 @@ async def update_podcasts_directory(_user=Depends(require_auth), db: AsyncSessio
     except Exception as e:
         logger.error(f"Errore aggiornamento directory: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# --- Favorites API ---
+
+
+@router.get("/api/favorites")
+async def get_favorites(user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
+    favorites = await get_user_favorites(db, user.id)
+    return {"favorites": favorites}
+
+
+@router.post("/api/favorites/{podcast_id}")
+async def toggle_favorite(
+    podcast_id: int = Path(...),
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    favorites = await get_user_favorites(db, user.id)
+    if podcast_id in favorites:
+        await remove_favorite(db, user.id, podcast_id)
+        return {"favorited": False}
+    else:
+        await add_favorite(db, user.id, podcast_id)
+        return {"favorited": True}
+
+
+@router.get("/api/opml/{token}")
+async def get_opml(
+    token: str = Path(...),
+    favorites_only: bool = False,
+    db: AsyncSession = Depends(get_db),
+):
+    """Genera file OPML con i podcast. Autenticazione via token RSS."""
+    user = await get_user_by_rss_token(db, token)
+    if not user:
+        raise HTTPException(status_code=403, detail="Token non valido")
+
+    podcasts_data = await fetch_podcasts(page=1, hits=100)
+    podcast_list = podcasts_data.get("data", [])
+
+    if favorites_only:
+        favorites = await get_user_favorites(db, user.id)
+        podcast_list = [p for p in podcast_list if p["id"] in favorites]
+
+    opml = _generate_opml(podcast_list, token, favorites_only)
+    return Response(
+        content=opml,
+        media_type="application/xml",
+        headers={"Content-Disposition": f"attachment; filename=ilpost-podcasts{'_preferiti' if favorites_only else ''}.opml"},
+    )
+
+
+def _generate_opml(podcasts: list, token: str, favorites_only: bool) -> str:
+    """Genera un file OPML con i podcast."""
+    from xml.sax.saxutils import escape
+    from config import BASE_URL
+
+    base = BASE_URL.rstrip("/")
+    title = "ilPost Podcasts - Preferiti" if favorites_only else "ilPost Podcasts"
+
+    lines = [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<opml version="2.0">',
+        '  <head>',
+        f'    <title>{escape(title)}</title>',
+        '  </head>',
+        '  <body>',
+        f'    <outline text="{escape(title)}">',
+    ]
+
+    for p in podcasts:
+        rss_url = f"{base}/podcast/{p['id']}/rss/{token}"
+        lines.append(
+            f'      <outline type="rss" text="{escape(p["title"])}" '
+            f'title="{escape(p["title"])}" xmlUrl="{escape(rss_url)}" />'
+        )
+
+    lines += [
+        '    </outline>',
+        '  </body>',
+        '</opml>',
+    ]
+
+    return "\n".join(lines)
 
 
 # --- Feed Endpoints ---

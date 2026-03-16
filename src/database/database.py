@@ -74,7 +74,11 @@ def _check_schema_current(sync_conn):
         return False
     user_columns = {c["name"] for c in inspector.get_columns("users")}
     user_required = {"username", "email", "password_hash", "role", "rss_token", "oauth_sub"}
-    return user_required.issubset(user_columns)
+    if not user_required.issubset(user_columns):
+        return False
+    if not sync_conn.dialect.has_table(sync_conn, "favorites"):
+        return False
+    return True
 
 
 async def init_db():

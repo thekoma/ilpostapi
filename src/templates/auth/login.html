@@ -22,10 +22,16 @@
         </button>
     </form>
 
+    {% if smtp_enabled %}
+    <div class="auth-links" style="margin-top: 0.5rem;">
+        <a href="/auth/forgot-password">Password dimenticata?</a>
+    </div>
+    {% endif %}
+
     {% if oidc_enabled %}
     <div class="divider"><span>oppure</span></div>
     <a href="/auth/login/oidc" class="btn btn-oidc">
-        <i class="fas fa-key"></i> Accedi con SSO
+        <i class="fas fa-key"></i> Accedi con {{ oidc_provider_name }}
     </a>
     {% endif %}
 {% endblock %}

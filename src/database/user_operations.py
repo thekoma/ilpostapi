@@ -94,6 +94,13 @@ async def delete_user(db: AsyncSession, user_id: int) -> bool:
     return True
 
 
+async def update_user_role(db: AsyncSession, user: User, role: str) -> None:
+    if role not in ("admin", "user"):
+        raise ValueError("Ruolo non valido")
+    user.role = role
+    await db.commit()
+
+
 async def update_user_oauth_sub(db: AsyncSession, user: User, oauth_sub: str) -> None:
     user.oauth_sub = oauth_sub
     await db.commit()

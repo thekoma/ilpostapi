@@ -16,6 +16,7 @@ from auth_dependencies import require_auth
 from config import CACHE_TTL, BASE_URL
 from database import get_db
 from database.operations import get_podcast_episodes
+from database.favorite_operations import get_user_favorites
 from helpers import (
     clean_html_text,
     format_duration,
@@ -205,6 +206,7 @@ async def podcast_directory(
             await update_podcast_directory_cache()
             podcast_list = _directory_cache.get("directory", [])
 
+        favorites = await get_user_favorites(db, user.id)
         base_url = BASE_URL.rstrip("/")
         return templates.TemplateResponse(
             "podcast_directory.html",
@@ -212,6 +214,7 @@ async def podcast_directory(
                 "request": request,
                 "user": user,
                 "podcasts": podcast_list,
+                "favorites": favorites,
                 "year": datetime.now().year,
                 "needs_update": needs_update,
                 "base_url": base_url,

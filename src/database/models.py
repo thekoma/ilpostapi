@@ -1,10 +1,10 @@
 import secrets
 from datetime import datetime, timezone
 
-from sqlalchemy import Column, Integer, String, DateTime, Text, ForeignKey, Boolean
+from sqlalchemy import Column, Integer, String, DateTime, Text, ForeignKey, Boolean, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, relationship
 
-__all__ = ["Base", "Podcast", "Episode", "User"]
+__all__ = ["Base", "Podcast", "Episode", "User", "Favorite"]
 
 
 class Base(DeclarativeBase):
@@ -44,6 +44,16 @@ class User(Base):
     @property
     def is_admin(self):
         return self.role == "admin"
+
+
+class Favorite(Base):
+    __tablename__ = "favorites"
+    __table_args__ = (UniqueConstraint("user_id", "podcast_id"),)
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    podcast_id = Column(Integer, nullable=False, index=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
 class Episode(Base):
