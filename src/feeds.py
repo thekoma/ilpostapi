@@ -100,7 +100,7 @@ class PodcastRSSGenerator:
 
         # Explicit
         itunes_explicit = ET.SubElement(channel, "itunes:explicit")
-        itunes_explicit.text = "no"
+        itunes_explicit.text = "false"
 
         # Type (episodic vs serial)
         itunes_type = ET.SubElement(channel, "itunes:type")

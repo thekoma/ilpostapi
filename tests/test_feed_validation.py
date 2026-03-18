@@ -318,8 +318,8 @@ class TestRSSFeedValidation:
         ns = {"itunes": "http://www.itunes.com/dtds/podcast-1.0.dtd"}
         explicit = channel.find("itunes:explicit", ns)
         assert explicit is not None
-        assert explicit.text in ("yes", "no", "clean"), \
-            f"itunes:explicit deve essere yes/no/clean, trovato: {explicit.text}"
+        assert explicit.text in ("yes", "no", "clean", "true", "false"), \
+            f"itunes:explicit deve essere un valore valido, trovato: {explicit.text}"
 
     @patch("routes.api.fetch_podcasts")
     @patch("routes.api.get_podcast_episodes")
