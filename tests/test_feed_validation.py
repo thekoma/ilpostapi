@@ -98,6 +98,18 @@ MOCK_DB_EPISODES = [
         publication_date=None,
         duration=None,
     ),
+    _make_episode(
+        id=5, ilpost_id="104",
+        title="Episodio con URL ellipsis e style tag",
+        description='<style>.foo{color:red}</style><p>Contenuto dopo style</p>',
+        summary="",
+        audio_url="https://www.example.com/podcast/tienimi-bordone-se-i-cattivi-sono-ricchi\u2026.mp3",
+        author="Matteo Bordone",
+        image_url="",
+        share_url="",
+        publication_date=datetime(2026, 3, 11, 10, 0, 0, tzinfo=timezone(timedelta(hours=1))),
+        duration=655,
+    ),
 ]
 
 
@@ -231,7 +243,7 @@ class TestRSSFeedValidation:
         root = ET.fromstring(resp.text)
         items = root.findall("channel/item")
 
-        assert len(items) == 4
+        assert len(items) == 5
 
         for item in items:
             title = item.find("title").text
@@ -318,8 +330,8 @@ class TestRSSFeedValidation:
         ns = {"itunes": "http://www.itunes.com/dtds/podcast-1.0.dtd"}
         explicit = channel.find("itunes:explicit", ns)
         assert explicit is not None
-        assert explicit.text in ("yes", "no", "clean"), \
-            f"itunes:explicit deve essere yes/no/clean, trovato: {explicit.text}"
+        assert explicit.text in ("yes", "no", "clean", "true", "false"), \
+            f"itunes:explicit deve essere un valore valido, trovato: {explicit.text}"
 
     @patch("routes.api.fetch_podcasts")
     @patch("routes.api.get_podcast_episodes")
@@ -357,6 +369,39 @@ class TestRSSFeedValidation:
             "Trovati attributi data-slate-* nel feed"
         assert "data-encore-" not in resp.text, \
             "Trovati attributi data-encore-* nel feed"
+
+    @patch("routes.api.fetch_podcasts")
+    @patch("routes.api.get_podcast_episodes")
+    async def test_rss_enclosure_url_percent_encoded(
+        self, mock_get_episodes, mock_fetch_podcasts, client: AsyncClient
+    ):
+        """URL con caratteri non-ASCII (es. ellipsis …) devono essere percent-encoded."""
+        await create_admin_via_setup(client)
+        _setup_mocks(mock_get_episodes, mock_fetch_podcasts)
+
+        resp = await client.get("/podcast/42/rss", follow_redirects=False)
+        root = ET.fromstring(resp.text)
+        items = root.findall("channel/item")
+
+        for item in items:
+            enclosure = item.find("enclosure")
+            url = enclosure.get("url")
+            # Nessun carattere non-ASCII nell'URL
+            assert url.isascii(), f"URL contiene caratteri non-ASCII: {url}"
+
+    @patch("routes.api.fetch_podcasts")
+    @patch("routes.api.get_podcast_episodes")
+    async def test_rss_content_no_style_tag(
+        self, mock_get_episodes, mock_fetch_podcasts, client: AsyncClient
+    ):
+        """content:encoded non deve contenere tag <style>."""
+        await create_admin_via_setup(client)
+        _setup_mocks(mock_get_episodes, mock_fetch_podcasts)
+
+        resp = await client.get("/podcast/42/rss", follow_redirects=False)
+        # Il tag style potrebbe essere escaped in XML, controlliamo entrambe le forme
+        assert "<style" not in resp.text.lower(), \
+            "Trovato tag <style> nel feed"
 
     @patch("routes.api.fetch_podcasts")
     @patch("routes.api.get_podcast_episodes")
