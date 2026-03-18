@@ -16,7 +16,7 @@ def _clean(text: str) -> str:
 
 
 class PodcastRSSGenerator:
-    def generate_feed(self, podcast_data, episodes_data, request_base_url):
+    def generate_feed(self, podcast_data, episodes_data, request_base_url, self_url=None):
         base_url = os.getenv("BASE_URL") or request_base_url.rstrip("/")
         podcast_id = podcast_data["id"]
 
@@ -27,7 +27,6 @@ class PodcastRSSGenerator:
                 "xmlns:itunes": "http://www.itunes.com/dtds/podcast-1.0.dtd",
                 "xmlns:content": "http://purl.org/rss/1.0/modules/content/",
                 "xmlns:atom": "http://www.w3.org/2005/Atom",
-                "xmlns:googleplay": "http://www.google.com/schemas/play-podcasts/1.0",
                 "xmlns:podcast": "https://podcastindex.org/namespace/1.0",
             },
         )
@@ -38,7 +37,7 @@ class PodcastRSSGenerator:
 
         # Atom self-link (required for validation)
         atom_link = ET.SubElement(channel, "atom:link")
-        atom_link.set("href", f"{base_url}/podcast/{podcast_id}/rss")
+        atom_link.set("href", self_url or f"{base_url}/podcast/{podcast_id}/rss")
         atom_link.set("rel", "self")
         atom_link.set("type", "application/rss+xml")
 
@@ -57,17 +56,11 @@ class PodcastRSSGenerator:
         # Author (multiple formats for max compatibility)
         author_name = _clean(podcast_data.get("author", "Il Post"))
 
-        author_elem = ET.SubElement(channel, "author")
-        author_elem.text = f"{author_name} (podcast@ilpost.it)"
-
         managing_editor = ET.SubElement(channel, "managingEditor")
         managing_editor.text = f"podcast@ilpost.it ({author_name})"
 
         itunes_author = ET.SubElement(channel, "itunes:author")
         itunes_author.text = author_name
-
-        googleplay_author = ET.SubElement(channel, "googleplay:author")
-        googleplay_author.text = author_name
 
         # Image (multiple formats)
         image_url = podcast_data.get("image", "")
@@ -84,9 +77,6 @@ class PodcastRSSGenerator:
             itunes_image = ET.SubElement(channel, "itunes:image")
             itunes_image.set("href", image_url)
 
-            googleplay_image = ET.SubElement(channel, "googleplay:image")
-            googleplay_image.set("href", image_url)
-
         # Language
         language = ET.SubElement(channel, "language")
         language.text = "it"
@@ -98,9 +88,6 @@ class PodcastRSSGenerator:
         # Category
         itunes_category = ET.SubElement(channel, "itunes:category")
         itunes_category.set("text", "News")
-
-        googleplay_category = ET.SubElement(channel, "googleplay:category")
-        googleplay_category.set("text", "News")
 
         # Explicit
         itunes_explicit = ET.SubElement(channel, "itunes:explicit")
@@ -155,7 +142,7 @@ class PodcastRSSGenerator:
 
                 # content:encoded preserves HTML
                 content_encoded = ET.SubElement(item, "content:encoded")
-                content_encoded.text = f"<![CDATA[{content_html}]]>"
+                content_encoded.text = content_html
 
             # itunes:summary - use the short summary if available, otherwise description
             itunes_summary = ET.SubElement(item, "itunes:summary")
@@ -168,7 +155,7 @@ class PodcastRSSGenerator:
             ep_author_name = _clean(ep.get("author", "")) or author_name
 
             ep_author = ET.SubElement(item, "author")
-            ep_author.text = f"{ep_author_name} (podcast@ilpost.it)"
+            ep_author.text = f"podcast@ilpost.it ({ep_author_name})"
 
             itunes_author_ep = ET.SubElement(item, "itunes:author")
             itunes_author_ep.text = ep_author_name
@@ -184,6 +171,8 @@ class PodcastRSSGenerator:
                 pubDate = ET.SubElement(item, "pubDate")
                 try:
                     pub_date = datetime.fromisoformat(ep["date"])
+                    if pub_date.tzinfo is None:
+                        pub_date = pub_date.replace(tzinfo=timezone(timedelta(hours=1)))
                     pubDate.text = pub_date.strftime("%a, %d %b %Y %H:%M:%S %z")
                 except (ValueError, TypeError):
                     pubDate.text = datetime.now(
@@ -294,7 +283,7 @@ class PodcastRDFGenerator:
                 item_desc.text = _clean(content_html)
 
                 content_encoded = ET.SubElement(item, "content:encoded")
-                content_encoded.text = f"<![CDATA[{content_html}]]>"
+                content_encoded.text = content_html
 
             # Summary
             if ep.get("summary"):
