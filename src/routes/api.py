@@ -611,8 +611,9 @@ async def _generate_rss(podcast_id: int, request: Request, db: AsyncSession):
         }
 
         request_base_url = str(request.base_url).rstrip("/")
+        self_url = str(request.url)
         rss_feed = rss_generator.generate_feed(
-            podcast_data, episodes_data, request_base_url
+            podcast_data, episodes_data, request_base_url, self_url=self_url
         )
 
         return Response(content=rss_feed, media_type="application/rss+xml")
