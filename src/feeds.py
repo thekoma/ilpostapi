@@ -2,6 +2,7 @@ import os
 import re
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone, timedelta
+from urllib.parse import quote, urlparse, urlunparse
 
 from helpers import clean_html_text
 from utils.logging import get_logger
@@ -17,10 +18,21 @@ def _clean(text: str) -> str:
 
 
 def _clean_html_attrs(html: str) -> str:
-    """Rimuove attributi data-* dall'HTML (es. data-slate-*, data-encore-*)."""
+    """Rimuove attributi data-* e tag <style> dall'HTML."""
     if not html:
         return ""
-    return re.sub(r'\s+data-[\w-]+="[^"]*"', "", html)
+    html = re.sub(r'<style[^>]*>.*?</style>', "", html, flags=re.DOTALL | re.IGNORECASE)
+    html = re.sub(r'\s+data-[\w-]+="[^"]*"', "", html)
+    return html
+
+
+def _sanitize_url(url: str) -> str:
+    """Percent-encode caratteri non-ASCII nell'URL (es. … → %E2%80%A6)."""
+    if not url:
+        return ""
+    parsed = urlparse(url)
+    safe_path = quote(parsed.path, safe="/:@!$&'()*+,;=-._~")
+    return urlunparse(parsed._replace(path=safe_path))
 
 
 class PodcastRSSGenerator:
@@ -118,14 +130,16 @@ class PodcastRSSGenerator:
         for ep in episodes_data["data"]:
             item = ET.SubElement(channel, "item")
 
+            ep_audio_url = _sanitize_url(ep["episode_raw_url"])
+            ep_share_url = ep.get("share_url") or ""
+
             # GUID - prefer share_url (stable permalink) over audio URL
             guid = ET.SubElement(item, "guid")
-            ep_share_url = ep.get("share_url")
             if ep_share_url:
                 guid.text = ep_share_url
                 guid.set("isPermaLink", "true")
             else:
-                guid.text = ep["episode_raw_url"]
+                guid.text = ep_audio_url
                 guid.set("isPermaLink", "true")
 
             # Title
@@ -134,7 +148,7 @@ class PodcastRSSGenerator:
 
             # Link - canonical URL to episode page
             ep_link = ET.SubElement(item, "link")
-            ep_link.text = ep_share_url or ep.get("url") or ep["episode_raw_url"]
+            ep_link.text = ep_share_url or ep.get("url") or ep_audio_url
 
             # Description / Summary / Content
             content_html = ep.get("content_html") or ep.get("description", "")
@@ -205,7 +219,7 @@ class PodcastRSSGenerator:
 
             # Enclosure (audio file)
             enclosure = ET.SubElement(item, "enclosure")
-            enclosure.set("url", ep["episode_raw_url"])
+            enclosure.set("url", ep_audio_url)
             enclosure.set("type", "audio/mpeg")
             enclosure.set("length", str(ep.get("size", "0")))
 
@@ -269,7 +283,8 @@ class PodcastRDFGenerator:
         seq = ET.SubElement(items, "rdf:Seq")
 
         for ep in episodes_data["data"]:
-            ep_url = ep.get("share_url") or ep["episode_raw_url"]
+            ep_audio_url = _sanitize_url(ep["episode_raw_url"])
+            ep_url = ep.get("share_url") or ep_audio_url
 
             ET.SubElement(seq, "rdf:li", {"rdf:resource": ep_url})
 
@@ -313,7 +328,7 @@ class PodcastRDFGenerator:
             ET.SubElement(
                 item,
                 "enclosure",
-                {"rdf:resource": ep["episode_raw_url"], "type": "audio/mpeg"},
+                {"rdf:resource": ep_audio_url, "type": "audio/mpeg"},
             )
 
         return ET.tostring(rdf, encoding="unicode", method="xml", xml_declaration=True)
