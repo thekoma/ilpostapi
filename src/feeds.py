@@ -1,4 +1,5 @@
 import os
+import re
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone, timedelta
 
@@ -15,6 +16,13 @@ def _clean(text: str) -> str:
     return clean_html_text(text)
 
 
+def _clean_html_attrs(html: str) -> str:
+    """Rimuove attributi data-* dall'HTML (es. data-slate-*, data-encore-*)."""
+    if not html:
+        return ""
+    return re.sub(r'\s+data-[\w-]+="[^"]*"', "", html)
+
+
 class PodcastRSSGenerator:
     def generate_feed(self, podcast_data, episodes_data, request_base_url, self_url=None):
         base_url = os.getenv("BASE_URL") or request_base_url.rstrip("/")
@@ -27,7 +35,6 @@ class PodcastRSSGenerator:
                 "xmlns:itunes": "http://www.itunes.com/dtds/podcast-1.0.dtd",
                 "xmlns:content": "http://purl.org/rss/1.0/modules/content/",
                 "xmlns:atom": "http://www.w3.org/2005/Atom",
-                "xmlns:podcast": "https://podcastindex.org/namespace/1.0",
             },
         )
 
@@ -88,10 +95,12 @@ class PodcastRSSGenerator:
         # Category
         itunes_category = ET.SubElement(channel, "itunes:category")
         itunes_category.set("text", "News")
+        itunes_subcategory = ET.SubElement(itunes_category, "itunes:category")
+        itunes_subcategory.set("text", "Daily News")
 
         # Explicit
         itunes_explicit = ET.SubElement(channel, "itunes:explicit")
-        itunes_explicit.text = "false"
+        itunes_explicit.text = "no"
 
         # Type (episodic vs serial)
         itunes_type = ET.SubElement(channel, "itunes:type")
@@ -103,10 +112,6 @@ class PodcastRSSGenerator:
         itunes_name.text = author_name
         itunes_email = ET.SubElement(itunes_owner, "itunes:email")
         itunes_email.text = "podcast@ilpost.it"
-
-        # Podcast namespace: locked
-        podcast_locked = ET.SubElement(channel, "podcast:locked")
-        podcast_locked.text = "no"
 
         # --- Episodes ---
 
@@ -142,7 +147,7 @@ class PodcastRSSGenerator:
 
                 # content:encoded preserves HTML
                 content_encoded = ET.SubElement(item, "content:encoded")
-                content_encoded.text = content_html
+                content_encoded.text = _clean_html_attrs(content_html)
 
             # itunes:summary - use the short summary if available, otherwise description
             itunes_summary = ET.SubElement(item, "itunes:summary")
@@ -283,7 +288,7 @@ class PodcastRDFGenerator:
                 item_desc.text = _clean(content_html)
 
                 content_encoded = ET.SubElement(item, "content:encoded")
-                content_encoded.text = content_html
+                content_encoded.text = _clean_html_attrs(content_html)
 
             # Summary
             if ep.get("summary"):

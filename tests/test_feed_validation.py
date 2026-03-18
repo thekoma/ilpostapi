@@ -77,7 +77,7 @@ MOCK_DB_EPISODES = [
     _make_episode(
         id=3, ilpost_id="102",
         title='Episodio con caratteri speciali: <Perche\'> & "virgolette"',
-        description="<p>HTML con &amp; e <em>enfasi</em></p>",
+        description='<p data-slate-node="element">HTML con <a data-slate-inline="true" data-encore-id="link" href="#">link</a> e <em data-slate-leaf="true">enfasi</em></p>',
         summary="Riassunto con 'apici' e \"virgolette\"",
         audio_url="https://cdn.example.com/ep3.mp3",
         author="Luca Misculin",
@@ -289,6 +289,74 @@ class TestRSSFeedValidation:
 
         resp = await client.get("/podcast/42/rss", follow_redirects=False)
         assert "google.com/schemas/play-podcasts" not in resp.text
+
+    @patch("routes.api.fetch_podcasts")
+    @patch("routes.api.get_podcast_episodes")
+    async def test_rss_no_podcastindex_namespace(
+        self, mock_get_episodes, mock_fetch_podcasts, client: AsyncClient
+    ):
+        """Il feed non deve usare il namespace podcastindex (non riconosciuto dai validatori)."""
+        await create_admin_via_setup(client)
+        _setup_mocks(mock_get_episodes, mock_fetch_podcasts)
+
+        resp = await client.get("/podcast/42/rss", follow_redirects=False)
+        assert "podcastindex.org" not in resp.text
+
+    @patch("routes.api.fetch_podcasts")
+    @patch("routes.api.get_podcast_episodes")
+    async def test_rss_itunes_explicit_valid_value(
+        self, mock_get_episodes, mock_fetch_podcasts, client: AsyncClient
+    ):
+        """itunes:explicit deve essere 'yes', 'no' o 'clean', non 'true'/'false'."""
+        await create_admin_via_setup(client)
+        _setup_mocks(mock_get_episodes, mock_fetch_podcasts)
+
+        resp = await client.get("/podcast/42/rss", follow_redirects=False)
+        root = ET.fromstring(resp.text)
+        channel = root.find("channel")
+
+        ns = {"itunes": "http://www.itunes.com/dtds/podcast-1.0.dtd"}
+        explicit = channel.find("itunes:explicit", ns)
+        assert explicit is not None
+        assert explicit.text in ("yes", "no", "clean"), \
+            f"itunes:explicit deve essere yes/no/clean, trovato: {explicit.text}"
+
+    @patch("routes.api.fetch_podcasts")
+    @patch("routes.api.get_podcast_episodes")
+    async def test_rss_itunes_category_not_obsolete(
+        self, mock_get_episodes, mock_fetch_podcasts, client: AsyncClient
+    ):
+        """La categoria iTunes non deve essere obsoleta."""
+        await create_admin_via_setup(client)
+        _setup_mocks(mock_get_episodes, mock_fetch_podcasts)
+
+        resp = await client.get("/podcast/42/rss", follow_redirects=False)
+        root = ET.fromstring(resp.text)
+        channel = root.find("channel")
+
+        ns = {"itunes": "http://www.itunes.com/dtds/podcast-1.0.dtd"}
+        category = channel.find("itunes:category", ns)
+        assert category is not None
+        cat_text = category.get("text")
+        # "News" da solo e' obsoleto, deve avere una sottocategoria
+        subcategory = category.find("itunes:category", ns)
+        assert subcategory is not None, \
+            f"La categoria '{cat_text}' deve avere una sottocategoria"
+
+    @patch("routes.api.fetch_podcasts")
+    @patch("routes.api.get_podcast_episodes")
+    async def test_rss_content_no_data_attributes(
+        self, mock_get_episodes, mock_fetch_podcasts, client: AsyncClient
+    ):
+        """content:encoded non deve contenere attributi data-slate-* o data-encore-*."""
+        await create_admin_via_setup(client)
+        _setup_mocks(mock_get_episodes, mock_fetch_podcasts)
+
+        resp = await client.get("/podcast/42/rss", follow_redirects=False)
+        assert "data-slate-" not in resp.text, \
+            "Trovati attributi data-slate-* nel feed"
+        assert "data-encore-" not in resp.text, \
+            "Trovati attributi data-encore-* nel feed"
 
     @patch("routes.api.fetch_podcasts")
     @patch("routes.api.get_podcast_episodes")
