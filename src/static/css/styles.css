@@ -245,6 +245,13 @@ footer {
     margin-top: 2rem;
 }
 
+footer .build-info {
+    font-size: 0.7rem;
+    opacity: 0.5;
+    margin-top: 0.3rem;
+    font-family: monospace;
+}
+
 @media (max-width: 768px) {
     .podcast-grid {
         grid-template-columns: 1fr;

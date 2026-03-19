@@ -256,6 +256,7 @@
         <footer>
             <div class="container">
                 <p>&copy; {{ year }} Il Post - Tutti i diritti riservati</p>
+                <p class="build-info">{% if build_version %}{{ build_version }}{% endif %}{% if build_commit and build_commit != 'dev' %}{% if build_version %} · {% endif %}{{ build_commit[:7] }}{% elif not build_version %}dev{% endif %}</p>
             </div>
         </footer>
 
