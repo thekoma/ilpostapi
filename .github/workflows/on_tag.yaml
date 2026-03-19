@@ -86,6 +86,9 @@ jobs:
           platforms: linux/amd64,linux/arm64/v8
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            BUILD_COMMIT=${{ github.sha }}
+            BUILD_VERSION=${{ github.event.client_payload.tag_name || github.ref_name }}
 
   create-release:
     needs: build-and-push # Run after the build job
