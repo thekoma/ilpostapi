@@ -46,3 +46,7 @@ SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
 SMTP_FROM = os.getenv("SMTP_FROM", "")
 SMTP_USE_TLS = os.getenv("SMTP_USE_TLS", "true").lower() == "true"
 SMTP_ENABLED = bool(SMTP_HOST and SMTP_FROM)
+
+# Build info (iniettate dal Docker build)
+BUILD_COMMIT = os.getenv("BUILD_COMMIT", "dev")
+BUILD_VERSION = os.getenv("BUILD_VERSION", "")

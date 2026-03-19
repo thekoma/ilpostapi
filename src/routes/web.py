@@ -13,7 +13,7 @@ from api_client import (
     get_episode_info_cache,
 )
 from auth_dependencies import require_auth
-from config import CACHE_TTL, BASE_URL
+from config import CACHE_TTL, BASE_URL, BUILD_COMMIT, BUILD_VERSION
 from database import get_db
 from database.operations import get_podcast_episodes
 from database.favorite_operations import get_user_favorites
@@ -218,6 +218,8 @@ async def podcast_directory(
                 "year": datetime.now().year,
                 "needs_update": needs_update,
                 "base_url": base_url,
+                "build_commit": BUILD_COMMIT,
+                "build_version": BUILD_VERSION,
             },
         )
     except Exception as e:
@@ -312,6 +314,8 @@ async def podcast_episodes(
                 "podcast_id": podcast_id,
                 "year": datetime.now().year,
                 "base_url": base_url,
+                "build_commit": BUILD_COMMIT,
+                "build_version": BUILD_VERSION,
             },
         )
     except HTTPException:
