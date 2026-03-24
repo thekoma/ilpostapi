@@ -19,7 +19,6 @@ class TestProtectedRoutes:
         "/podcast/1/last",
         "/podcast/1/lastepisode",
         "/podcast/1/rss",
-        "/podcast/1/rdf",
         "/clear-cache",
         "/api/podcast/1/episodes",
         "/api/podcast/1/episode/1/description",

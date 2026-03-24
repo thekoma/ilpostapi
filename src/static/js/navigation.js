@@ -11,8 +11,8 @@
         try {
             const url = new URL(a.href, location.origin);
             if (url.origin !== location.origin) return false;
-            // Skip RSS/RDF feed links and API endpoints
-            if (url.pathname.endsWith('/rss') || url.pathname.endsWith('/rdf')) return false;
+            // Skip RSS feed links and API endpoints
+            if (url.pathname.endsWith('/rss')) return false;
             if (url.pathname.endsWith('/last') || url.pathname.endsWith('/lastepisode')) return false;
             return true;
         } catch {
