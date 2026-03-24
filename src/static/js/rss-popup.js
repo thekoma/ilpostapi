@@ -18,29 +18,21 @@ function toggleRssPopup(event, podcastId) {
 
     // Build paths with token
     var rssPath = '/podcast/' + podcastId + '/rss' + (token ? '/' + token : '');
-    var rdfPath = '/podcast/' + podcastId + '/rdf' + (token ? '/' + token : '');
 
     // Update links
     popup.dataset.podcastId = podcastId;
     document.getElementById('rss-popup-rss-link').href = rssPath;
-    document.getElementById('rss-popup-rdf-link').href = rdfPath;
 
-    // Setup copy buttons
+    // Setup copy button
     var copyRss = document.getElementById('rss-popup-copy-rss');
-    var copyRdf = document.getElementById('rss-popup-copy-rdf');
 
     copyRss.onclick = function (e) {
         e.stopPropagation();
         copyFeedUrl(copyRss, rssPath);
     };
-    copyRdf.onclick = function (e) {
-        e.stopPropagation();
-        copyFeedUrl(copyRdf, rdfPath);
-    };
 
     // Reset copy button text
     resetCopyButton(copyRss, 'RSS');
-    resetCopyButton(copyRdf, 'RDF');
 
     // Position popup above the button
     var rect = button.getBoundingClientRect();
@@ -83,9 +75,8 @@ function copyFeedUrl(button, path) {
         button.textContent = '';
         button.appendChild(icon);
         button.appendChild(document.createTextNode(' Copiato!'));
-        var isRdf = path.indexOf('rdf') !== -1;
         setTimeout(function () {
-            resetCopyButton(button, isRdf ? 'RDF' : 'RSS');
+            resetCopyButton(button, 'RSS');
         }, 2000);
     });
 }

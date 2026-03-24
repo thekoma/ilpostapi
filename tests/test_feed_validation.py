@@ -1,4 +1,4 @@
-"""Test di validazione RSS/RDF: genera feed con dati mock realistici e valida la struttura."""
+"""Test di validazione RSS: genera feed con dati mock realistici e valida la struttura."""
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone, timedelta
 from email.utils import parsedate_tz
@@ -113,9 +113,21 @@ MOCK_DB_EPISODES = [
 ]
 
 
-def _setup_mocks(mock_get_episodes, mock_fetch_podcasts):
+MOCK_DB_PODCAST = SimpleNamespace(
+    id=42,
+    ilpost_id="42",
+    title="Morning",
+    description="La rassegna stampa del Post, con Luca Misculin.",
+    author="Luca Misculin",
+    image_url="https://example.com/morning.jpg",
+    share_url="https://www.ilpost.it/podcasts/morning",
+    slug="morning",
+)
+
+
+def _setup_mocks(mock_get_episodes, mock_get_podcast):
     """Configura i mock per evitare il percorso di salvataggio nel DB."""
-    mock_fetch_podcasts.return_value = {"data": [MOCK_PODCAST_INFO]}
+    mock_get_podcast.return_value = MOCK_DB_PODCAST
     # Ritorna episodi con needs_update=False per evitare il save path
     mock_get_episodes.return_value = (MOCK_DB_EPISODES, False)
 
@@ -124,41 +136,41 @@ def _setup_mocks(mock_get_episodes, mock_fetch_podcasts):
 class TestRSSFeedValidation:
     """Valida la struttura del feed RSS generato."""
 
-    @patch("routes.api.fetch_podcasts")
+    @patch("routes.api.get_podcast_by_ilpost_id")
     @patch("routes.api.get_podcast_episodes")
     async def test_rss_is_valid_xml(
-        self, mock_get_episodes, mock_fetch_podcasts, client: AsyncClient
+        self, mock_get_episodes, mock_get_podcast, client: AsyncClient
     ):
         """Il feed deve essere XML ben formato."""
         await create_admin_via_setup(client)
-        _setup_mocks(mock_get_episodes, mock_fetch_podcasts)
+        _setup_mocks(mock_get_episodes, mock_get_podcast)
 
         resp = await client.get("/podcast/42/rss", follow_redirects=False)
         assert resp.status_code == 200
         assert "application/rss+xml" in resp.headers["content-type"]
         ET.fromstring(resp.text)
 
-    @patch("routes.api.fetch_podcasts")
+    @patch("routes.api.get_podcast_by_ilpost_id")
     @patch("routes.api.get_podcast_episodes")
     async def test_rss_feedparser_no_bozo(
-        self, mock_get_episodes, mock_fetch_podcasts, client: AsyncClient
+        self, mock_get_episodes, mock_get_podcast, client: AsyncClient
     ):
         """feedparser non deve segnalare errori (bozo=0)."""
         await create_admin_via_setup(client)
-        _setup_mocks(mock_get_episodes, mock_fetch_podcasts)
+        _setup_mocks(mock_get_episodes, mock_get_podcast)
 
         resp = await client.get("/podcast/42/rss", follow_redirects=False)
         feed = feedparser.parse(resp.text)
         assert feed.bozo == 0, f"feedparser ha trovato errori: {feed.bozo_exception}"
 
-    @patch("routes.api.fetch_podcasts")
+    @patch("routes.api.get_podcast_by_ilpost_id")
     @patch("routes.api.get_podcast_episodes")
     async def test_rss_channel_required_elements(
-        self, mock_get_episodes, mock_fetch_podcasts, client: AsyncClient
+        self, mock_get_episodes, mock_get_podcast, client: AsyncClient
     ):
         """Il channel deve avere title, link, description (richiesti da RSS 2.0)."""
         await create_admin_via_setup(client)
-        _setup_mocks(mock_get_episodes, mock_fetch_podcasts)
+        _setup_mocks(mock_get_episodes, mock_get_podcast)
 
         resp = await client.get("/podcast/42/rss", follow_redirects=False)
         feed = feedparser.parse(resp.text)
@@ -168,14 +180,14 @@ class TestRSSFeedValidation:
         assert feed.feed.get("description")
         assert feed.feed.get("language") == "it"
 
-    @patch("routes.api.fetch_podcasts")
+    @patch("routes.api.get_podcast_by_ilpost_id")
     @patch("routes.api.get_podcast_episodes")
     async def test_rss_no_author_in_channel(
-        self, mock_get_episodes, mock_fetch_podcasts, client: AsyncClient
+        self, mock_get_episodes, mock_get_podcast, client: AsyncClient
     ):
         """Il channel NON deve avere <author> (non valido in RSS 2.0), solo managingEditor."""
         await create_admin_via_setup(client)
-        _setup_mocks(mock_get_episodes, mock_fetch_podcasts)
+        _setup_mocks(mock_get_episodes, mock_get_podcast)
 
         resp = await client.get("/podcast/42/rss", follow_redirects=False)
         root = ET.fromstring(resp.text)
@@ -186,14 +198,14 @@ class TestRSSFeedValidation:
         assert managing is not None
         assert "@" in managing.text, "managingEditor deve contenere un'email"
 
-    @patch("routes.api.fetch_podcasts")
+    @patch("routes.api.get_podcast_by_ilpost_id")
     @patch("routes.api.get_podcast_episodes")
     async def test_rss_item_author_email_format(
-        self, mock_get_episodes, mock_fetch_podcasts, client: AsyncClient
+        self, mock_get_episodes, mock_get_podcast, client: AsyncClient
     ):
         """L'<author> degli item deve essere nel formato 'email (nome)' per RSS 2.0."""
         await create_admin_via_setup(client)
-        _setup_mocks(mock_get_episodes, mock_fetch_podcasts)
+        _setup_mocks(mock_get_episodes, mock_get_podcast)
 
         resp = await client.get("/podcast/42/rss", follow_redirects=False)
         root = ET.fromstring(resp.text)
@@ -205,14 +217,14 @@ class TestRSSFeedValidation:
                 assert author.text.startswith("podcast@ilpost.it ("), \
                     f"Author non nel formato 'email (nome)': {author.text}"
 
-    @patch("routes.api.fetch_podcasts")
+    @patch("routes.api.get_podcast_by_ilpost_id")
     @patch("routes.api.get_podcast_episodes")
     async def test_rss_pubdate_has_timezone(
-        self, mock_get_episodes, mock_fetch_podcasts, client: AsyncClient
+        self, mock_get_episodes, mock_get_podcast, client: AsyncClient
     ):
         """Ogni pubDate deve essere RFC-822 con timezone."""
         await create_admin_via_setup(client)
-        _setup_mocks(mock_get_episodes, mock_fetch_podcasts)
+        _setup_mocks(mock_get_episodes, mock_get_podcast)
 
         resp = await client.get("/podcast/42/rss", follow_redirects=False)
         root = ET.fromstring(resp.text)
@@ -230,14 +242,14 @@ class TestRSSFeedValidation:
         # Almeno gli episodi con data devono avere pubDate
         assert dates_found >= 3
 
-    @patch("routes.api.fetch_podcasts")
+    @patch("routes.api.get_podcast_by_ilpost_id")
     @patch("routes.api.get_podcast_episodes")
     async def test_rss_enclosure_required_attrs(
-        self, mock_get_episodes, mock_fetch_podcasts, client: AsyncClient
+        self, mock_get_episodes, mock_get_podcast, client: AsyncClient
     ):
         """Ogni item deve avere enclosure con url, type e length."""
         await create_admin_via_setup(client)
-        _setup_mocks(mock_get_episodes, mock_fetch_podcasts)
+        _setup_mocks(mock_get_episodes, mock_get_podcast)
 
         resp = await client.get("/podcast/42/rss", follow_redirects=False)
         root = ET.fromstring(resp.text)
@@ -253,14 +265,14 @@ class TestRSSFeedValidation:
             assert enclosure.get("type") == "audio/mpeg", f"type errato in '{title}'"
             assert enclosure.get("length") is not None, f"Manca length in '{title}'"
 
-    @patch("routes.api.fetch_podcasts")
+    @patch("routes.api.get_podcast_by_ilpost_id")
     @patch("routes.api.get_podcast_episodes")
     async def test_rss_guid_unique(
-        self, mock_get_episodes, mock_fetch_podcasts, client: AsyncClient
+        self, mock_get_episodes, mock_get_podcast, client: AsyncClient
     ):
         """Ogni item deve avere un guid unico."""
         await create_admin_via_setup(client)
-        _setup_mocks(mock_get_episodes, mock_fetch_podcasts)
+        _setup_mocks(mock_get_episodes, mock_get_podcast)
 
         resp = await client.get("/podcast/42/rss", follow_redirects=False)
         root = ET.fromstring(resp.text)
@@ -274,14 +286,14 @@ class TestRSSFeedValidation:
             assert guid.text not in guids, f"GUID duplicato: {guid.text}"
             guids.add(guid.text)
 
-    @patch("routes.api.fetch_podcasts")
+    @patch("routes.api.get_podcast_by_ilpost_id")
     @patch("routes.api.get_podcast_episodes")
     async def test_rss_special_chars_escaped(
-        self, mock_get_episodes, mock_fetch_podcasts, client: AsyncClient
+        self, mock_get_episodes, mock_get_podcast, client: AsyncClient
     ):
         """Caratteri speciali XML devono essere escaped correttamente."""
         await create_admin_via_setup(client)
-        _setup_mocks(mock_get_episodes, mock_fetch_podcasts)
+        _setup_mocks(mock_get_episodes, mock_get_podcast)
 
         resp = await client.get("/podcast/42/rss", follow_redirects=False)
         root = ET.fromstring(resp.text)
@@ -290,38 +302,38 @@ class TestRSSFeedValidation:
         special_item = [i for i in items if "speciali" in (i.find("title").text or "")]
         assert len(special_item) == 1
 
-    @patch("routes.api.fetch_podcasts")
+    @patch("routes.api.get_podcast_by_ilpost_id")
     @patch("routes.api.get_podcast_episodes")
     async def test_rss_no_googleplay_namespace(
-        self, mock_get_episodes, mock_fetch_podcasts, client: AsyncClient
+        self, mock_get_episodes, mock_get_podcast, client: AsyncClient
     ):
         """Il feed non deve usare il namespace googleplay (deprecato)."""
         await create_admin_via_setup(client)
-        _setup_mocks(mock_get_episodes, mock_fetch_podcasts)
+        _setup_mocks(mock_get_episodes, mock_get_podcast)
 
         resp = await client.get("/podcast/42/rss", follow_redirects=False)
         assert "google.com/schemas/play-podcasts" not in resp.text
 
-    @patch("routes.api.fetch_podcasts")
+    @patch("routes.api.get_podcast_by_ilpost_id")
     @patch("routes.api.get_podcast_episodes")
     async def test_rss_no_podcastindex_namespace(
-        self, mock_get_episodes, mock_fetch_podcasts, client: AsyncClient
+        self, mock_get_episodes, mock_get_podcast, client: AsyncClient
     ):
         """Il feed non deve usare il namespace podcastindex (non riconosciuto dai validatori)."""
         await create_admin_via_setup(client)
-        _setup_mocks(mock_get_episodes, mock_fetch_podcasts)
+        _setup_mocks(mock_get_episodes, mock_get_podcast)
 
         resp = await client.get("/podcast/42/rss", follow_redirects=False)
         assert "podcastindex.org" not in resp.text
 
-    @patch("routes.api.fetch_podcasts")
+    @patch("routes.api.get_podcast_by_ilpost_id")
     @patch("routes.api.get_podcast_episodes")
     async def test_rss_itunes_explicit_valid_value(
-        self, mock_get_episodes, mock_fetch_podcasts, client: AsyncClient
+        self, mock_get_episodes, mock_get_podcast, client: AsyncClient
     ):
         """itunes:explicit deve essere 'yes', 'no' o 'clean', non 'true'/'false'."""
         await create_admin_via_setup(client)
-        _setup_mocks(mock_get_episodes, mock_fetch_podcasts)
+        _setup_mocks(mock_get_episodes, mock_get_podcast)
 
         resp = await client.get("/podcast/42/rss", follow_redirects=False)
         root = ET.fromstring(resp.text)
@@ -333,14 +345,14 @@ class TestRSSFeedValidation:
         assert explicit.text in ("yes", "no", "clean", "true", "false"), \
             f"itunes:explicit deve essere un valore valido, trovato: {explicit.text}"
 
-    @patch("routes.api.fetch_podcasts")
+    @patch("routes.api.get_podcast_by_ilpost_id")
     @patch("routes.api.get_podcast_episodes")
     async def test_rss_itunes_category_not_obsolete(
-        self, mock_get_episodes, mock_fetch_podcasts, client: AsyncClient
+        self, mock_get_episodes, mock_get_podcast, client: AsyncClient
     ):
         """La categoria iTunes non deve essere obsoleta."""
         await create_admin_via_setup(client)
-        _setup_mocks(mock_get_episodes, mock_fetch_podcasts)
+        _setup_mocks(mock_get_episodes, mock_get_podcast)
 
         resp = await client.get("/podcast/42/rss", follow_redirects=False)
         root = ET.fromstring(resp.text)
@@ -355,14 +367,14 @@ class TestRSSFeedValidation:
         assert subcategory is not None, \
             f"La categoria '{cat_text}' deve avere una sottocategoria"
 
-    @patch("routes.api.fetch_podcasts")
+    @patch("routes.api.get_podcast_by_ilpost_id")
     @patch("routes.api.get_podcast_episodes")
     async def test_rss_content_no_data_attributes(
-        self, mock_get_episodes, mock_fetch_podcasts, client: AsyncClient
+        self, mock_get_episodes, mock_get_podcast, client: AsyncClient
     ):
         """content:encoded non deve contenere attributi data-slate-* o data-encore-*."""
         await create_admin_via_setup(client)
-        _setup_mocks(mock_get_episodes, mock_fetch_podcasts)
+        _setup_mocks(mock_get_episodes, mock_get_podcast)
 
         resp = await client.get("/podcast/42/rss", follow_redirects=False)
         assert "data-slate-" not in resp.text, \
@@ -370,14 +382,14 @@ class TestRSSFeedValidation:
         assert "data-encore-" not in resp.text, \
             "Trovati attributi data-encore-* nel feed"
 
-    @patch("routes.api.fetch_podcasts")
+    @patch("routes.api.get_podcast_by_ilpost_id")
     @patch("routes.api.get_podcast_episodes")
     async def test_rss_enclosure_url_percent_encoded(
-        self, mock_get_episodes, mock_fetch_podcasts, client: AsyncClient
+        self, mock_get_episodes, mock_get_podcast, client: AsyncClient
     ):
         """URL con caratteri non-ASCII (es. ellipsis …) devono essere percent-encoded."""
         await create_admin_via_setup(client)
-        _setup_mocks(mock_get_episodes, mock_fetch_podcasts)
+        _setup_mocks(mock_get_episodes, mock_get_podcast)
 
         resp = await client.get("/podcast/42/rss", follow_redirects=False)
         root = ET.fromstring(resp.text)
@@ -389,28 +401,28 @@ class TestRSSFeedValidation:
             # Nessun carattere non-ASCII nell'URL
             assert url.isascii(), f"URL contiene caratteri non-ASCII: {url}"
 
-    @patch("routes.api.fetch_podcasts")
+    @patch("routes.api.get_podcast_by_ilpost_id")
     @patch("routes.api.get_podcast_episodes")
     async def test_rss_content_no_style_tag(
-        self, mock_get_episodes, mock_fetch_podcasts, client: AsyncClient
+        self, mock_get_episodes, mock_get_podcast, client: AsyncClient
     ):
         """content:encoded non deve contenere tag <style>."""
         await create_admin_via_setup(client)
-        _setup_mocks(mock_get_episodes, mock_fetch_podcasts)
+        _setup_mocks(mock_get_episodes, mock_get_podcast)
 
         resp = await client.get("/podcast/42/rss", follow_redirects=False)
         # Il tag style potrebbe essere escaped in XML, controlliamo entrambe le forme
         assert "<style" not in resp.text.lower(), \
             "Trovato tag <style> nel feed"
 
-    @patch("routes.api.fetch_podcasts")
+    @patch("routes.api.get_podcast_by_ilpost_id")
     @patch("routes.api.get_podcast_episodes")
     async def test_rss_self_link_matches_request_url(
-        self, mock_get_episodes, mock_fetch_podcasts, client: AsyncClient
+        self, mock_get_episodes, mock_get_podcast, client: AsyncClient
     ):
         """L'atom:link self deve contenere il path del podcast."""
         await create_admin_via_setup(client)
-        _setup_mocks(mock_get_episodes, mock_fetch_podcasts)
+        _setup_mocks(mock_get_episodes, mock_get_podcast)
 
         resp = await client.get("/podcast/42/rss", follow_redirects=False)
         root = ET.fromstring(resp.text)
@@ -422,14 +434,14 @@ class TestRSSFeedValidation:
         href = atom_link.get("href")
         assert "/podcast/42/rss" in href
 
-    @patch("routes.api.fetch_podcasts")
+    @patch("routes.api.get_podcast_by_ilpost_id")
     @patch("routes.api.get_podcast_episodes")
     async def test_rss_token_url_self_link(
-        self, mock_get_episodes, mock_fetch_podcasts, client: AsyncClient
+        self, mock_get_episodes, mock_get_podcast, client: AsyncClient
     ):
         """Quando si accede via token, il self-link deve includere il token."""
         await create_admin_via_setup(client)
-        _setup_mocks(mock_get_episodes, mock_fetch_podcasts)
+        _setup_mocks(mock_get_episodes, mock_get_podcast)
 
         from database.database import AsyncSessionLocal
         from database.user_operations import get_user_by_username
@@ -448,86 +460,17 @@ class TestRSSFeedValidation:
         href = atom_link.get("href")
         assert token in href, f"Il self-link deve contenere il token: {href}"
 
-    @patch("routes.api.fetch_podcasts")
+    @patch("routes.api.get_podcast_by_ilpost_id")
     @patch("routes.api.get_podcast_episodes")
     async def test_rss_content_encoded_no_cdata_escaped(
-        self, mock_get_episodes, mock_fetch_podcasts, client: AsyncClient
+        self, mock_get_episodes, mock_get_podcast, client: AsyncClient
     ):
         """content:encoded non deve contenere CDATA escaped (no &lt;![CDATA[)."""
         await create_admin_via_setup(client)
-        _setup_mocks(mock_get_episodes, mock_fetch_podcasts)
+        _setup_mocks(mock_get_episodes, mock_get_podcast)
 
         resp = await client.get("/podcast/42/rss", follow_redirects=False)
         assert "&lt;![CDATA[" not in resp.text, \
             "CDATA markers sono escaped - il contenuto HTML risulta invalido"
 
 
-@pytest.mark.asyncio(loop_scope="session")
-class TestRDFFeedValidation:
-    """Valida la struttura del feed RDF generato."""
-
-    @patch("routes.api.fetch_podcasts")
-    @patch("routes.api.fetch_all_episodes")
-    async def test_rdf_is_valid_xml(
-        self, mock_fetch_all, mock_fetch_podcasts, client: AsyncClient
-    ):
-        await create_admin_via_setup(client)
-        mock_fetch_podcasts.return_value = {"data": [MOCK_PODCAST_INFO]}
-        mock_fetch_all.return_value = {"data": []}
-
-        resp = await client.get("/podcast/42/rdf", follow_redirects=False)
-        assert resp.status_code == 200
-        assert "application/rdf+xml" in resp.headers["content-type"]
-        ET.fromstring(resp.text)
-
-    @patch("routes.api.fetch_podcasts")
-    @patch("routes.api.fetch_all_episodes")
-    async def test_rdf_feedparser_no_bozo(
-        self, mock_fetch_all, mock_fetch_podcasts, client: AsyncClient
-    ):
-        await create_admin_via_setup(client)
-        mock_fetch_podcasts.return_value = {"data": [MOCK_PODCAST_INFO]}
-        mock_fetch_all.return_value = {
-            "data": [
-                {
-                    "title": "Ep RDF",
-                    "description": "Desc",
-                    "content_html": "<p>HTML</p>",
-                    "summary": "Riassunto",
-                    "episode_raw_url": "https://cdn.example.com/ep.mp3",
-                    "author": "Autore",
-                    "image": "",
-                    "share_url": "https://www.ilpost.it/ep",
-                    "date": "2026-03-14T08:00:00+01:00",
-                },
-            ]
-        }
-
-        resp = await client.get("/podcast/42/rdf", follow_redirects=False)
-        feed = feedparser.parse(resp.text)
-        assert feed.bozo == 0, f"feedparser ha trovato errori: {feed.bozo_exception}"
-
-    @patch("routes.api.fetch_podcasts")
-    @patch("routes.api.fetch_all_episodes")
-    async def test_rdf_no_cdata_escaped(
-        self, mock_fetch_all, mock_fetch_podcasts, client: AsyncClient
-    ):
-        await create_admin_via_setup(client)
-        mock_fetch_podcasts.return_value = {"data": [MOCK_PODCAST_INFO]}
-        mock_fetch_all.return_value = {
-            "data": [
-                {
-                    "title": "Ep",
-                    "description": "Desc",
-                    "content_html": "<p>HTML con <strong>tag</strong></p>",
-                    "summary": "",
-                    "episode_raw_url": "https://cdn.example.com/ep.mp3",
-                    "author": "",
-                    "share_url": "",
-                    "date": "2026-03-14T08:00:00+01:00",
-                },
-            ]
-        }
-
-        resp = await client.get("/podcast/42/rdf", follow_redirects=False)
-        assert "&lt;![CDATA[" not in resp.text

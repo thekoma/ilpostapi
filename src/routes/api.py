@@ -1,3 +1,4 @@
+import hashlib
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Request, Depends, Path
@@ -8,6 +9,7 @@ from sqlalchemy.sql import select
 from api_client import (
     fetch_podcasts,
     fetch_episodes,
+    fetch_episodes_batch,
     fetch_all_episodes,
     fetch_episode_details,
     check_updates_from_bff,
@@ -18,13 +20,14 @@ from auth_dependencies import require_auth
 from database import get_db, Podcast, Episode
 from database.operations import (
     get_or_create_podcast,
+    get_podcast_by_ilpost_id,
     update_podcast_check_time,
     get_podcast_episodes,
     save_episodes,
 )
 from database.user_operations import get_user_by_rss_token
 from database.favorite_operations import get_user_favorites, add_favorite, remove_favorite
-from feeds import rss_generator, rdf_generator
+from feeds import rss_generator
 from helpers import clean_html_text, format_duration
 from utils.logging import get_logger
 from utils.rate_limiter import api_rate_limiter
@@ -518,19 +521,16 @@ def _generate_opml(podcasts: list, token: str, favorites_only: bool, base_url: s
 
 async def _generate_rss(podcast_id: int, request: Request, db: AsyncSession):
     try:
-        podcasts = await fetch_podcasts()
-        podcast_info = next(
-            (p for p in podcasts["data"] if p["id"] == podcast_id), None
-        )
-
-        if not podcast_info:
-            raise HTTPException(status_code=404, detail="Podcast non trovato")
-
         episodes, needs_update = await get_podcast_episodes(db, podcast_id)
 
         if needs_update or not episodes:
             await api_rate_limiter.wait()
             api_episodes = await fetch_all_episodes(podcast_id)
+
+            if not api_episodes.get("data"):
+                raise HTTPException(
+                    status_code=404, detail="Podcast non trovato"
+                )
 
             db_podcast = await get_or_create_podcast(
                 db, str(podcast_id), api_episodes["data"][0]
@@ -545,33 +545,41 @@ async def _generate_rss(podcast_id: int, request: Request, db: AsyncSession):
             await update_podcast_check_time(db, db_podcast)
             episodes, _ = await get_podcast_episodes(db, podcast_id)
 
-        # Aggiorna descrizioni non verificate
+        # Recupera info podcast dal DB (salvate da get_or_create_podcast)
+        db_podcast = await get_podcast_by_ilpost_id(db, str(podcast_id))
+        if not db_podcast:
+            raise HTTPException(status_code=404, detail="Podcast non trovato")
+
+        # Aggiorna descrizioni non verificate in batch
         episodes_to_update = [
             ep for ep in episodes if not ep.description_verified
         ]
         if episodes_to_update:
             total = len(episodes_to_update)
             logger.info(
-                f"Aggiornamento {total} descrizioni per '{podcast_info['title']}'"
+                f"Aggiornamento {total} descrizioni per '{db_podcast.title}'"
             )
-            for idx, episode in enumerate(episodes_to_update, 1):
-                try:
-                    await api_rate_limiter.wait()
-                    details = await fetch_episode_details(
-                        podcast_id, int(episode.ilpost_id)
-                    )
-                    if details and "data" in details:
-                        ep_data = details["data"]
-                        episode.description = ep_data.get(
-                            "content_html", ""
-                        ) or ep_data.get("description", "")
-                        episode.description_verified = True
-                        await db.commit()
-                except Exception as e:
-                    logger.error(
-                        f"Errore descrizione episodio {idx}/{total}: {e}"
-                    )
-                    continue
+            ep_ids = [int(ep.ilpost_id) for ep in episodes_to_update]
+            try:
+                await api_rate_limiter.wait()
+                batch_result = await fetch_episodes_batch(ep_ids)
+                if batch_result and "data" in batch_result:
+                    # Mappa i risultati per ID
+                    details_map = {
+                        ep["id"]: ep for ep in batch_result["data"]
+                    }
+                    for episode in episodes_to_update:
+                        ep_data = details_map.get(int(episode.ilpost_id))
+                        if ep_data:
+                            episode.description = ep_data.get(
+                                "content_html", ""
+                            ) or ep_data.get("description", "")
+                            episode.description_verified = True
+                    await db.commit()
+            except Exception as e:
+                logger.error(
+                    f"Errore batch descrizioni ({total} episodi): {e}"
+                )
 
         episodes_data = {
             "data": [
@@ -602,12 +610,12 @@ async def _generate_rss(podcast_id: int, request: Request, db: AsyncSession):
 
         podcast_data = {
             "id": podcast_id,
-            "title": podcast_info["title"],
-            "description": podcast_info["description"],
-            "author": podcast_info["author"],
-            "image": podcast_info["image"],
-            "share_url": podcast_info.get("share_url", ""),
-            "slug": podcast_info.get("slug", ""),
+            "title": db_podcast.title,
+            "description": db_podcast.description,
+            "author": db_podcast.author,
+            "image": db_podcast.image_url,
+            "share_url": db_podcast.share_url or "",
+            "slug": db_podcast.slug or "",
         }
 
         request_base_url = str(request.base_url).rstrip("/")
@@ -616,43 +624,50 @@ async def _generate_rss(podcast_id: int, request: Request, db: AsyncSession):
             podcast_data, episodes_data, request_base_url, self_url=self_url
         )
 
-        return Response(content=rss_feed, media_type="application/rss+xml")
+        # Calcola ETag dal contenuto del feed
+        etag = '"' + hashlib.md5(rss_feed.encode()).hexdigest() + '"'
+
+        # Controlla If-None-Match dal client
+        if_none_match = request.headers.get("if-none-match", "")
+        if if_none_match == etag:
+            return Response(status_code=304, headers={"ETag": etag})
+
+        # Determina Last-Modified dall'episodio più recente
+        last_modified = None
+        if episodes:
+            latest = max(
+                (ep.publication_date for ep in episodes if ep.publication_date),
+                default=None,
+            )
+            if latest:
+                last_modified = latest.strftime("%a, %d %b %Y %H:%M:%S GMT")
+
+        # Controlla If-Modified-Since dal client
+        if last_modified:
+            if_modified_since = request.headers.get("if-modified-since", "")
+            if if_modified_since == last_modified:
+                return Response(
+                    status_code=304,
+                    headers={"ETag": etag, "Last-Modified": last_modified},
+                )
+
+        # Risposta completa con header di caching
+        headers = {
+            "ETag": etag,
+            "Cache-Control": "public, max-age=300",
+        }
+        if last_modified:
+            headers["Last-Modified"] = last_modified
+
+        return Response(
+            content=rss_feed,
+            media_type="application/rss+xml",
+            headers=headers,
+        )
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Errore generazione RSS: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-async def _generate_rdf(podcast_id: int, request: Request):
-    try:
-        podcasts = await fetch_podcasts()
-        podcast_info = next(
-            (p for p in podcasts["data"] if p["id"] == podcast_id), None
-        )
-
-        if not podcast_info:
-            raise HTTPException(status_code=404, detail="Podcast non trovato")
-
-        episodes = await fetch_all_episodes(podcast_id)
-
-        podcast_data = {
-            "id": podcast_id,
-            "title": podcast_info["title"],
-            "description": podcast_info["description"],
-            "author": podcast_info["author"],
-            "image": podcast_info["image"],
-        }
-
-        request_base_url = str(request.base_url).rstrip("/")
-        rdf_feed = rdf_generator.generate_feed(
-            podcast_data, episodes, request_base_url
-        )
-
-        return Response(content=rdf_feed, media_type="application/rdf+xml")
-    except HTTPException:
-        raise
-    except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -666,15 +681,6 @@ async def get_podcast_rss(
     db: AsyncSession = Depends(get_db),
 ):
     return await _generate_rss(podcast_id, request, db)
-
-
-@router.get("/podcast/{podcast_id}/rdf")
-async def get_podcast_rdf(
-    podcast_id: int = Path(...),
-    request: Request = None,
-    _user=Depends(require_auth),
-):
-    return await _generate_rdf(podcast_id, request)
 
 
 # --- Token-authenticated feed routes (for RSS readers) ---
@@ -692,14 +698,3 @@ async def get_podcast_rss_token(
     return await _generate_rss(podcast_id, request, db)
 
 
-@router.get("/podcast/{podcast_id}/rdf/{token}")
-async def get_podcast_rdf_token(
-    podcast_id: int = Path(...),
-    token: str = Path(...),
-    request: Request = None,
-    db: AsyncSession = Depends(get_db),
-):
-    user = await get_user_by_rss_token(db, token)
-    if not user:
-        raise HTTPException(status_code=403, detail="Token non valido")
-    return await _generate_rdf(podcast_id, request)
