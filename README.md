@@ -1,10 +1,20 @@
-# ilPost Podcasts
+<h1 align="center">ilPost Podcasts</h1>
 
-[![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/thekoma/ilpostapi/on_tag.yaml?style=flat-square)](https://github.com/thekoma/ilpostapi/actions)
-[![GitHub release (latest by date)](https://img.shields.io/github/v/release/thekoma/ilpostapi?style=flat-square)](https://github.com/thekoma/ilpostapi/releases)
-[![GitHub last commit](https://img.shields.io/github/last-commit/thekoma/ilpostapi?style=flat-square)](https://github.com/thekoma/ilpostapi/commits)
-[![Docker Image Version](https://img.shields.io/github/v/tag/thekoma/ilpostapi?label=docker%20tag&style=flat-square)](https://github.com/thekoma/ilpostapi/pkgs/container/ilpostapi)
-[![Container Registry](https://img.shields.io/badge/container-ghcr.io-blue?style=flat-square)](https://github.com/thekoma/ilpostapi/pkgs/container/ilpostapi)
+<p align="center">
+  <a href="https://github.com/thekoma/ilpostapi/actions/workflows/ci.yml"><img src="https://github.com/thekoma/ilpostapi/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/thekoma/ilpostapi/releases"><img src="https://img.shields.io/github/v/release/thekoma/ilpostapi" alt="Release"></a>
+  <a href="https://github.com/thekoma/ilpostapi/pkgs/container/ilpostapi"><img src="https://ghcr-badge.egpl.dev/thekoma/ilpostapi/latest_tag?trim=major&label=latest" alt="Latest Tag"></a>
+  <a href="https://ghcr.io/thekoma/ilpostapi"><img src="https://ghcr-badge.egpl.dev/thekoma/ilpostapi/size" alt="Image Size"></a>
+  <a href="https://github.com/thekoma/ilpostapi/commits"><img src="https://img.shields.io/github/last-commit/thekoma/ilpostapi" alt="Last Commit"></a>
+  <img src="https://img.shields.io/badge/python-3.14-3776AB?logo=python&logoColor=white" alt="Python 3.14">
+  <img src="https://img.shields.io/badge/framework-FastAPI-009688?logo=fastapi&logoColor=white" alt="FastAPI">
+  <img src="https://img.shields.io/badge/database-SQLite-003B57?logo=sqlite&logoColor=white" alt="SQLite">
+  <img src="https://img.shields.io/badge/arch-amd64%20%7C%20arm64-blueviolet" alt="Arch: amd64 | arm64">
+  <img src="https://img.shields.io/badge/deploy-Docker%20%7C%20K8s-2496ED?logo=docker&logoColor=white" alt="Deploy: Docker | K8s">
+  <img src="https://img.shields.io/badge/SSO-OIDC%20%2F%20OAuth2-purple?logo=openid" alt="SSO: OIDC / OAuth2">
+  <img src="https://img.shields.io/badge/theme-Catppuccin-EBA0AC?logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAiIGhlaWdodD0iMjAiIHZpZXdCb3g9IjAgMCAyMCAyMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48Y2lyY2xlIGN4PSIxMCIgY3k9IjEwIiByPSI4IiBmaWxsPSIjRUJBMEFDIi8+PC9zdmc+" alt="Theme: Catppuccin">
+  <img src="https://img.shields.io/badge/self--hosted-Raspberry%20Pi%20ready-C51A4A?logo=raspberrypi&logoColor=white" alt="Self-hosted: Raspberry Pi ready">
+</p>
 
 Un'interfaccia web per accedere ai podcast de Il Post, con feed RSS/RDF e player audio integrato.
 
@@ -26,7 +36,7 @@ Un'interfaccia web per accedere ai podcast de Il Post, con feed RSS/RDF e player
 - Design con temi [Catppuccin](https://github.com/catppuccin/catppuccin) (Latte, Frappe, Macchiato, Mocha)
 - Player audio persistente con navigazione tra episodi (non si interrompe cambiando pagina)
 - Ricerca fuzzy in tempo reale su titoli, descrizioni e autori
-- Popup Feed con link RSS/RDF e copia negli appunti
+- Popup Feed con link RSS e copia negli appunti
 
 ### Autenticazione e Utenti
 - **Login con username/password** — autenticazione locale con sessioni
@@ -49,8 +59,8 @@ Un'interfaccia web per accedere ai podcast de Il Post, con feed RSS/RDF e player
 - Rigenerazione del token RSS
 - URL di esempio per configurare lettori RSS
 
-### Feed RSS/RDF con Token
-- Feed RSS/RDF accessibili tramite token nell'URL: `/podcast/{id}/rss/{token}`
+### Feed RSS con Token
+- Feed RSS accessibili tramite token nell'URL: `/podcast/{id}/rss/{token}`
 - Ogni utente ha un token RSS unico, visibile nel profilo
 - I lettori RSS "stupidi" possono accedere ai feed senza sessione
 - Rigenerazione del token in caso di compromissione
@@ -269,7 +279,6 @@ La suite include 109 test che coprono: operazioni CRUD utenti, flusso di setup e
 | `/` | Homepage con lista podcast | Sessione |
 | `/podcast/{id}/episodes` | Episodi di un podcast | Sessione |
 | `/podcast/{id}/rss/{token}` | Feed RSS (per lettori RSS) | Token |
-| `/podcast/{id}/rdf/{token}` | Feed RDF (per lettori RSS) | Token |
 | `/api/opml/{token}` | Export OPML tutti i podcast | Token |
 | `/api/opml/{token}?favorites_only=true` | Export OPML solo preferiti | Token |
 | `/api/favorites` | Lista preferiti utente | Sessione |
