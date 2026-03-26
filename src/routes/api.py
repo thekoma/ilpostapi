@@ -635,8 +635,16 @@ async def _generate_rss(podcast_id: int, request: Request, db: AsyncSession):
         # Determina Last-Modified dall'episodio più recente
         last_modified = None
         if episodes:
+            from datetime import timezone
+
+            def _to_utc(dt):
+                """Normalizza datetime a UTC aware per confronto sicuro."""
+                if dt.tzinfo is None:
+                    return dt.replace(tzinfo=timezone.utc)
+                return dt.astimezone(timezone.utc)
+
             latest = max(
-                (ep.publication_date for ep in episodes if ep.publication_date),
+                (_to_utc(ep.publication_date) for ep in episodes if ep.publication_date),
                 default=None,
             )
             if latest:
