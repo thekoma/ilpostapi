@@ -548,6 +548,17 @@ async def _generate_rss(podcast_id: int, request: Request, db: AsyncSession):
             await update_podcast_check_time(db, db_podcast)
             episodes, _ = await get_podcast_episodes(db, podcast_id)
 
+        # Sort episodes by publication date (newest first) for the RSS feed
+        def _sort_date(ep):
+            dt = ep.publication_date
+            if dt is None:
+                return datetime.min.replace(tzinfo=timezone.utc)
+            if dt.tzinfo is None:
+                return dt.replace(tzinfo=timezone.utc)
+            return dt
+
+        episodes.sort(key=_sort_date, reverse=True)
+
         # Recupera info podcast dal DB (salvate da get_or_create_podcast)
         db_podcast = await get_podcast_by_ilpost_id(db, str(podcast_id))
         if not db_podcast:
@@ -638,8 +649,6 @@ async def _generate_rss(podcast_id: int, request: Request, db: AsyncSession):
         # Determina Last-Modified dall'episodio più recente
         last_modified = None
         if episodes:
-            from datetime import timezone
-
             def _to_utc(dt):
                 """Normalizza datetime a UTC aware per confronto sicuro."""
                 if dt.tzinfo is None:
