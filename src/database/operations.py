@@ -84,6 +84,7 @@ async def get_podcast_episodes(
     Returns:
         Tuple[List[Episode], bool]: Lista degli episodi e flag che indica se serve un aggiornamento
     """
+
     # Prima proviamo a cercare per ID interno
     stmt = (
         select(Podcast)
@@ -106,11 +107,11 @@ async def get_podcast_episodes(
     if not podcast:
         return [], True
 
-    # Se l'ultimo controllo è più vecchio di 1 ora o se è richiesto un aggiornamento
+    # Check if last update is older than 15 minutes or if an update is explicitly requested
     last_checked = podcast.last_checked
     if last_checked and last_checked.tzinfo is None:
         last_checked = last_checked.replace(tzinfo=timezone.utc)
-    if needs_update or not last_checked or (datetime.now(timezone.utc) - last_checked) > timedelta(hours=1):
+    if needs_update or not last_checked or (datetime.now(timezone.utc) - last_checked) > timedelta(minutes=15):
         return podcast.episodes, True
 
     logger.info(

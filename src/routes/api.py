@@ -14,6 +14,7 @@ from api_client import (
     fetch_episode_details,
     check_updates_from_bff,
     clear_all_caches,
+    clear_episodes_cache,
 )
 from auth import clear_token_cache
 from auth_dependencies import require_auth
@@ -524,6 +525,8 @@ async def _generate_rss(podcast_id: int, request: Request, db: AsyncSession):
         episodes, needs_update = await get_podcast_episodes(db, podcast_id)
 
         if needs_update or not episodes:
+            # Invalidate api_client cache for this podcast to avoid stale data
+            clear_episodes_cache(podcast_id)
             await api_rate_limiter.wait()
             api_episodes = await fetch_all_episodes(podcast_id)
 

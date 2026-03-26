@@ -230,6 +230,15 @@ def get_episode_info_cache():
     return _episode_info_cache
 
 
+def clear_episodes_cache(podcast_id: int = None):
+    """Clear the episodes cache for a specific podcast or all podcasts."""
+    if podcast_id is not None:
+        cache_key = f"all_episodes_{podcast_id}"
+        _episodes_list_cache.pop(cache_key, None)
+    else:
+        _episodes_list_cache.clear()
+
+
 def clear_all_caches():
     """Pulisce tutte le cache."""
     _podcasts_cache.clear()
