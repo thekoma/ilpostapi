@@ -16,7 +16,7 @@
   <img src="https://img.shields.io/badge/self--hosted-Raspberry%20Pi%20ready-C51A4A?logo=raspberrypi&logoColor=white" alt="Self-hosted: Raspberry Pi ready">
 </p>
 
-Un'interfaccia web per accedere ai podcast de Il Post, con feed RSS/RDF e player audio integrato.
+Un'interfaccia web per accedere ai podcast de Il Post, con feed RSS e player audio integrato.
 
 | Directory (Macchiato) | Directory (Latte) |
 |---|---|
