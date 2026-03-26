@@ -1,76 +1,201 @@
-name: Create Tag and Increment Version
+name: Release
 
 on:
   pull_request:
-    branches:
-      - main
+    branches: [main]
     types: [closed]
-  workflow_dispatch:  # Allow manual triggering
+  workflow_dispatch:
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY_IMAGE: ghcr.io/${{ github.repository_owner }}/ilpostapi
 
 jobs:
-  create-tag:
+  # ---------------------------------------------------------------------------
+  # Stage 1: Calculate calver tag (vYYYY.MM.patch)
+  # ---------------------------------------------------------------------------
+  release-tag:
+    name: Release Tag
     if: ${{ github.event.pull_request.merged || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.calculate_tag.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Calculate next calver tag
+        id: calculate_tag
+        run: |
+          set -e
+          PREFIX="v$(date +'%Y.%m')"
+          git fetch --tags
+          LAST_TAG=$(git tag --list "${PREFIX}.*" | sort -V | tail -n 1)
+
+          if [ -z "$LAST_TAG" ]; then
+            NEW_TAG="${PREFIX}.0"
+          else
+            SUFFIX=${LAST_TAG#$PREFIX.}
+            NEW_TAG="${PREFIX}.$((SUFFIX + 1))"
+          fi
+
+          echo "tag=$NEW_TAG" >> $GITHUB_OUTPUT
+          echo "Calculated tag: $NEW_TAG"
+
+  # ---------------------------------------------------------------------------
+  # Stage 2a: Build Docker image (amd64, native)
+  # ---------------------------------------------------------------------------
+  docker-build-amd64:
+    name: Docker (amd64)
+    needs: release-tag
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.REGISTRY_IMAGE }}
+
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64
+          outputs: type=image,name=${{ env.REGISTRY_IMAGE }},push-by-digest=true,name-canonical=true,push=true
+          build-args: |
+            BUILD_COMMIT=${{ github.sha }}
+            BUILD_VERSION=${{ needs.release-tag.outputs.tag }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=docker-amd64
+          cache-to: type=gha,mode=max,scope=docker-amd64
+
+  # ---------------------------------------------------------------------------
+  # Stage 2b: Build Docker image (arm64, native runner — no QEMU)
+  # ---------------------------------------------------------------------------
+  docker-build-arm64:
+    name: Docker (arm64)
+    needs: release-tag
+    runs-on: ubuntu-24.04-arm
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.REGISTRY_IMAGE }}
+
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/arm64
+          outputs: type=image,name=${{ env.REGISTRY_IMAGE }},push-by-digest=true,name-canonical=true,push=true
+          build-args: |
+            BUILD_COMMIT=${{ github.sha }}
+            BUILD_VERSION=${{ needs.release-tag.outputs.tag }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=docker-arm64
+          cache-to: type=gha,mode=max,scope=docker-arm64
+
+  # ---------------------------------------------------------------------------
+  # Stage 3: Merge digests into multi-arch manifest
+  # ---------------------------------------------------------------------------
+  docker-merge:
+    name: Docker Manifest
+    needs: [release-tag, docker-build-amd64, docker-build-arm64]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.REGISTRY_IMAGE }}
+          tags: |
+            type=raw,value=${{ needs.release-tag.outputs.tag }}
+            type=raw,value=${{ needs.release-tag.outputs.tag }},enable=true
+            type=raw,value=latest
+            type=sha,format=short
+
+      - name: Create manifest list and push
+        run: |
+          docker buildx imagetools create \
+            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            ${{ env.REGISTRY_IMAGE }}@${{ needs.docker-build-amd64.outputs.digest }} \
+            ${{ env.REGISTRY_IMAGE }}@${{ needs.docker-build-arm64.outputs.digest }}
+
+  # ---------------------------------------------------------------------------
+  # Stage 4: Git tag + GitHub Release
+  # ---------------------------------------------------------------------------
+  release:
+    name: GitHub Release
+    needs: [release-tag, docker-merge]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
-
-      - name: Get latest tag and increment version
-        id: tag_version
-        uses: actions/github-script@v8
+      - uses: actions/checkout@v6
         with:
-          script: |
-            // Get the latest tag
-            const tags = await github.rest.repos.listTags({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-            }).then(res => res.data);
+          fetch-depth: 0
 
-            let latestTag = 'v0.0.0'; // Default if no tags exist
-            if (tags.length > 0) {
-              latestTag = tags[0].name; // Assuming tags are sorted by date (newest first)
-            }
+      - name: Push git tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag ${{ needs.release-tag.outputs.tag }}
+          git push origin ${{ needs.release-tag.outputs.tag }}
 
-            // Extract version components
-            const [, year, month, minor] = latestTag.match(/v(\d{4})\.(\d{2})\.(\d+)/) || [null, 0, 0, 0];
-
-            // Get current year and month
-            const now = new Date();
-            const currentYear = now.getFullYear();
-            const currentMonth = now.getMonth() + 1; // Months are 0-indexed
-
-            // Determine the new version
-            let newMinor = parseInt(minor) + 1;
-            if (currentYear > parseInt(year) || currentMonth > parseInt(month)) {
-              newMinor = 0;
-            }
-
-            const newVersion = `v${currentYear}.${currentMonth.toString().padStart(2, '0')}.${newMinor}`;
-
-            // Output the new version
-            core.setOutput('new_version', newVersion);
-
-      - name: Create Tag
-        uses: actions/github-script@v8
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
         with:
-          script: |
-            // Access the output directly using the step id and output name
-            const newVersion = '${{ steps.tag_version.outputs.new_version }}';
-
-            // Create the new tag
-            await github.rest.git.createRef({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              ref: `refs/tags/${newVersion}`,
-              sha: context.sha,
-            });
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Trigger Tag Workflow
-        uses: peter-evans/repository-dispatch@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          event-type: tag_created  # Choose a descriptive event type
-          client-payload: '{"tag_name": "${{ steps.tag_version.outputs.new_version }}"}'
+          tag_name: ${{ needs.release-tag.outputs.tag }}
+          name: Release ${{ needs.release-tag.outputs.tag }}
+          generate_release_notes: true
