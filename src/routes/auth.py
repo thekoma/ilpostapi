@@ -43,8 +43,7 @@ async def setup_page(request: Request, db: AsyncSession = Depends(get_db)):
     if user_count > 0:
         return RedirectResponse("/auth/login", status_code=302)
 
-    return templates.TemplateResponse("auth/setup.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "auth/setup.html", {
         "error": None,
     })
 
@@ -67,14 +66,12 @@ async def setup_create_admin(
         return RedirectResponse("/auth/login", status_code=302)
 
     if password != password_confirm:
-        return templates.TemplateResponse("auth/setup.html", {
-            "request": request,
+        return templates.TemplateResponse(request, "auth/setup.html", {
             "error": "Le password non corrispondono",
         })
 
     if len(password) < 8:
-        return templates.TemplateResponse("auth/setup.html", {
-            "request": request,
+        return templates.TemplateResponse(request, "auth/setup.html", {
             "error": "La password deve essere di almeno 8 caratteri",
         })
 
@@ -94,8 +91,7 @@ async def login_page(request: Request, db: AsyncSession = Depends(get_db)):
     if request.session.get("user_id"):
         return RedirectResponse("/", status_code=302)
 
-    return templates.TemplateResponse("auth/login.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "auth/login.html", {
         "error": None,
         "oidc_enabled": OIDC_ENABLED,
         "oidc_provider_name": OIDC_PROVIDER_NAME,
@@ -117,8 +113,7 @@ async def login_submit(
         user = await get_user_by_email(db, username)
 
     if not user or not user.password_hash or not verify_password(password, user.password_hash):
-        return templates.TemplateResponse("auth/login.html", {
-            "request": request,
+        return templates.TemplateResponse(request, "auth/login.html", {
             "error": "Credenziali non valide",
             "oidc_enabled": OIDC_ENABLED,
             "oidc_provider_name": OIDC_PROVIDER_NAME,
@@ -224,8 +219,7 @@ async def change_password_page(
     user=Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
-    return templates.TemplateResponse("auth/change_password.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "auth/change_password.html", {
         "user": user,
         "error": None,
         "success": None,
@@ -243,29 +237,25 @@ async def change_password_submit(
     db: AsyncSession = Depends(get_db),
 ):
     if new_password != new_password_confirm:
-        return templates.TemplateResponse("auth/change_password.html", {
-            "request": request, "user": user,
+        return templates.TemplateResponse(request, "auth/change_password.html", { "user": user,
             "error": "Le nuove password non corrispondono", "success": None,
             "smtp_enabled": SMTP_ENABLED,
         })
 
     if len(new_password) < 8:
-        return templates.TemplateResponse("auth/change_password.html", {
-            "request": request, "user": user,
+        return templates.TemplateResponse(request, "auth/change_password.html", { "user": user,
             "error": "La nuova password deve essere di almeno 8 caratteri", "success": None,
             "smtp_enabled": SMTP_ENABLED,
         })
 
     if not user.password_hash or not verify_password(old_password, user.password_hash):
-        return templates.TemplateResponse("auth/change_password.html", {
-            "request": request, "user": user,
+        return templates.TemplateResponse(request, "auth/change_password.html", { "user": user,
             "error": "La vecchia password non è corretta", "success": None,
             "smtp_enabled": SMTP_ENABLED,
         })
 
     await update_user_password(db, user, new_password)
-    return templates.TemplateResponse("auth/change_password.html", {
-        "request": request, "user": user,
+    return templates.TemplateResponse(request, "auth/change_password.html", { "user": user,
         "error": None, "success": "Password aggiornata con successo",
         "smtp_enabled": SMTP_ENABLED,
     })
@@ -275,8 +265,7 @@ async def change_password_submit(
 async def forgot_password_page(request: Request):
     if not SMTP_ENABLED:
         raise HTTPException(status_code=404, detail="SMTP non configurato")
-    return templates.TemplateResponse("auth/forgot_password.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "auth/forgot_password.html", {
         "error": None,
         "success": None,
     })
@@ -301,8 +290,7 @@ async def forgot_password_submit(
         reset_url = f"{BASE_URL}/auth/reset-password/{token}"
         await _send_reset_email(user.email, reset_url)
 
-    return templates.TemplateResponse("auth/forgot_password.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "auth/forgot_password.html", {
         "error": None,
         "success": "Se l'email esiste, riceverai un link per reimpostare la password",
     })
@@ -318,13 +306,11 @@ async def reset_password_page(request: Request, token: str):
     try:
         serializer.loads(token, salt="password-reset", max_age=3600)
     except (SignatureExpired, BadSignature):
-        return templates.TemplateResponse("auth/reset_password.html", {
-            "request": request, "token": token,
+        return templates.TemplateResponse(request, "auth/reset_password.html", { "token": token,
             "error": "Link non valido o scaduto", "valid": False,
         })
 
-    return templates.TemplateResponse("auth/reset_password.html", {
-        "request": request, "token": token,
+    return templates.TemplateResponse(request, "auth/reset_password.html", { "token": token,
         "error": None, "valid": True,
     })
 
@@ -345,27 +331,23 @@ async def reset_password_submit(
     try:
         email = serializer.loads(token, salt="password-reset", max_age=3600)
     except (SignatureExpired, BadSignature):
-        return templates.TemplateResponse("auth/reset_password.html", {
-            "request": request, "token": token,
+        return templates.TemplateResponse(request, "auth/reset_password.html", { "token": token,
             "error": "Link non valido o scaduto", "valid": False,
         })
 
     if new_password != new_password_confirm:
-        return templates.TemplateResponse("auth/reset_password.html", {
-            "request": request, "token": token,
+        return templates.TemplateResponse(request, "auth/reset_password.html", { "token": token,
             "error": "Le password non corrispondono", "valid": True,
         })
 
     if len(new_password) < 8:
-        return templates.TemplateResponse("auth/reset_password.html", {
-            "request": request, "token": token,
+        return templates.TemplateResponse(request, "auth/reset_password.html", { "token": token,
             "error": "La password deve essere di almeno 8 caratteri", "valid": True,
         })
 
     user = await get_user_by_email(db, email)
     if not user:
-        return templates.TemplateResponse("auth/reset_password.html", {
-            "request": request, "token": token,
+        return templates.TemplateResponse(request, "auth/reset_password.html", { "token": token,
             "error": "Utente non trovato", "valid": False,
         })
 
