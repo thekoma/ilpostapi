@@ -88,7 +88,7 @@ jobs:
             BUILD_VERSION=${{ needs.release-tag.outputs.tag }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=docker-amd64
-          cache-to: type=gha,mode=max,scope=docker-amd64
+          cache-to: type=gha,mode=max,scope=docker-amd64,ignore-error=true
 
   # ---------------------------------------------------------------------------
   # Stage 2b: Build Docker image (arm64, native runner — no QEMU)
@@ -132,7 +132,7 @@ jobs:
             BUILD_VERSION=${{ needs.release-tag.outputs.tag }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=docker-arm64
-          cache-to: type=gha,mode=max,scope=docker-arm64
+          cache-to: type=gha,mode=max,scope=docker-arm64,ignore-error=true
 
   # ---------------------------------------------------------------------------
   # Stage 3: Merge digests into multi-arch manifest
