@@ -209,9 +209,9 @@ async def podcast_directory(
         favorites = await get_user_favorites(db, user.id)
         base_url = BASE_URL.rstrip("/")
         return templates.TemplateResponse(
+            request,
             "podcast_directory.html",
             {
-                "request": request,
                 "user": user,
                 "podcasts": podcast_list,
                 "favorites": favorites,
@@ -304,9 +304,9 @@ async def podcast_episodes(
 
         base_url = BASE_URL.rstrip("/")
         return templates.TemplateResponse(
+            request,
             "podcast_episodes.html",
             {
-                "request": request,
                 "user": user,
                 "podcast": podcast,
                 "episodes": serialized_episodes,

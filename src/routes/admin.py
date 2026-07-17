@@ -17,8 +17,7 @@ templates = Jinja2Templates(directory="templates")
 
 async def _render_users(request, admin, db, error=None, success=None):
     users = await get_all_users(db)
-    return templates.TemplateResponse("admin/users.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "admin/users.html", {
         "user": admin,
         "users": users,
         "error": error,

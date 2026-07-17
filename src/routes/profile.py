@@ -19,8 +19,7 @@ async def profile_page(
     db: AsyncSession = Depends(get_db),
 ):
     base_url = BASE_URL.rstrip("/")
-    return templates.TemplateResponse("profile.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "profile.html", {
         "user": user,
         "base_url": base_url,
         "smtp_enabled": SMTP_ENABLED,
