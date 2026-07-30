@@ -612,29 +612,29 @@ uvicorn = ">=0.20.0"
 
 [[package]]
 name = "feedparser"
-version = "6.0.13"
+version = "6.0.14"
 description = "Universal feed parser, handles RSS 0.9x, RSS 1.0, RSS 2.0, CDF, Atom 0.3, and Atom 1.0 feeds"
 optional = false
 python-versions = ">=3.10"
 groups = ["dev"]
 files = [
-    {file = "feedparser-6.0.13-py3-none-any.whl", hash = "sha256:ff00fcd62a1bba943ad6dadb7e3139bc3e2d9e027859343283112d605e794e52"},
-    {file = "feedparser-6.0.13.tar.gz", hash = "sha256:ceba9cd98a0a4bfc17e24e8ea47e649f194fbf881d417fd5bd0af2927a03c5c9"},
+    {file = "feedparser-6.0.14-py3-none-any.whl", hash = "sha256:e35e3f760151b0c3b22cac9684155cae186a233e16c49bcbc6c49e91e3131137"},
+    {file = "feedparser-6.0.14.tar.gz", hash = "sha256:088679b0c4b543ee211a820dd544698c76a402122eae7473c04a43425f283d06"},
 ]
 
 [package.dependencies]
-feedparser-sgmllib = ">=1,<2"
+feedparser-sgmllib = ">=2,<3"
 
 [[package]]
 name = "feedparser-sgmllib"
-version = "1.0.0"
+version = "2.0.0"
 description = "sgmllib from Python 2.7. For feedparser use only."
 optional = false
 python-versions = ">=3.10"
 groups = ["dev"]
 files = [
-    {file = "feedparser_sgmllib-1.0.0-py3-none-any.whl", hash = "sha256:d0d5daf29b3f315396d4d5a65b5fe28862d1bc4ea37dec826ccbf1021034a959"},
-    {file = "feedparser_sgmllib-1.0.0.tar.gz", hash = "sha256:f73861ca2f6bb2798b2499fbab62d34bd27fd13379704a38ed616c67eb0a76a6"},
+    {file = "feedparser_sgmllib-2.0.0-py3-none-any.whl", hash = "sha256:91d4175a7de40c2fa08352021fb9aa42d1046150648487c5819fe561b379877d"},
+    {file = "feedparser_sgmllib-2.0.0.tar.gz", hash = "sha256:a60ffefd15d61162fda24e6ac0ad90e148f7d074eba3c7d104d434225fb69bc4"},
 ]
 
 [[package]]
