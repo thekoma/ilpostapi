@@ -189,6 +189,25 @@ async def oidc_callback(request: Request, db: AsyncSession = Depends(get_db)):
             user.role = role
             await db.commit()
         else:
+            # The username is unique. A local account with the same name but a
+            # different email is not proof that it belongs to this OIDC
+            # identity, so never link on username: refuse with a readable
+            # error instead of crashing on the UNIQUE constraint (HTTP 500).
+            if await get_user_by_username(db, preferred_username):
+                logger.warning(
+                    f"OIDC login refused: username {preferred_username!r} already "
+                    f"belongs to a local account with a different email (OIDC email={email!r})"
+                )
+                return templates.TemplateResponse(request, "auth/login.html", {
+                    "error": (
+                        f"Esiste già un account locale \"{preferred_username}\" con un'email "
+                        f"diversa da {email}. Per collegarlo a {OIDC_PROVIDER_NAME}, "
+                        "imposta su quell'account la stessa email del provider."
+                    ),
+                    "oidc_enabled": OIDC_ENABLED,
+                    "oidc_provider_name": OIDC_PROVIDER_NAME,
+                    "smtp_enabled": SMTP_ENABLED,
+                }, status_code=409)
             # Create new user
             user = await create_user(
                 db,
